@@ -1,6 +1,6 @@
 # finmon design system
 
-Source of truth for UI. Implement tokens and primitives **before** any product screen. Do not introduce a third-party component kit (MUI, Chakra, Ant, shadcn). If a chart library is required, wrap it so candles and chrome still use these tokens.
+Source of truth for UI. Implement tokens and primitives **before** any product screen. Do not introduce a third-party component kit (MUI, Chakra, Ant, shadcn). Charts use **Apache ECharts** (`echarts`) only, wrapped so candles, volume, grid, and axis still use these tokens.
 
 Product context: dense Vietnam market monitor (catalog, daily chart, notes, alerts). Single operator. English UI labels; Vietnamese names/tickers as data.
 
@@ -41,6 +41,8 @@ CSS custom properties on `:root`. Dark theme only in v1 (one theme).
 
 Chart plot area uses `--bg`. Grid `--border`. Candle up `--up`, down `--down`. Wick same as body. Volume bars 40% opacity of up/down.
 
+ECharts: set `backgroundColor` to `--bg`; `axisLine`/`splitLine` to `--border`; `axisLabel` to `--text-faint` / `--font-num`; candlestick `itemStyle.color` / `color0` / `borderColor` / `borderColor0` to `--up` / `--down`. Do not keep ECharts’ default red-up palette. Tooltip uses `--bg-elev`, `--text`, `--font-num`.
+
 Drawings: `--accent` default stroke; user may pick from `{accent, up, down, warn, text}`.
 
 ### 2.2 Type
@@ -71,7 +73,7 @@ One control height: **32px**. Icon buttons 32×32. Table row height **36px**. He
 
 ### 2.5 Motion
 
-150ms opacity/background only. No bounce. Chart pan/zoom from the chart library, not CSS.
+150ms opacity/background only. No bounce. Chart pan/zoom via ECharts `dataZoom` (inside + slider), not CSS.
 
 ---
 

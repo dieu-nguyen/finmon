@@ -69,7 +69,7 @@ frontend/
       Symbol.tsx
       Alerts.tsx
     chart/
-      DailyChart.tsx            # wraps chart lib + drawing overlay
+      DailyChart.tsx            # Apache ECharts candlestick + drawings
       drawings.ts               # date/price anchors
 ```
 
@@ -79,14 +79,15 @@ Root `README.md` stays a title only unless you ask to expand it.
 
 ## Task 0 — Folders and toolchains
 
-**Files:** `backend/pyproject.toml`, `frontend/package.json`, `frontend/vite.config.ts`, `frontend/tsconfig.json`, `frontend/index.html`
+**Files:** `backend/pyproject.toml`, `frontend/package.json`, `frontend/vite.config.ts`, `frontend/tsconfig.json`, `frontend/index.html`, `docker-compose.yml` (MySQL 8, database `finmon`, port 3306)
 
-- Python 3.12, package `app`, deps: `fastapi`, `uvicorn`, `sqlalchemy`, `alembic`, `pydantic-settings`, `httpx`, `apscheduler`, `pytest`. Optional later: `vnstock`.
-- Node 22, Vite, React, TypeScript. Chart lib: `lightweight-charts` (candles only; drawings are our overlay).
+- Python 3.12, package `app`, deps: `fastapi`, `uvicorn`, `sqlalchemy`, `alembic`, `pymysql`, `pydantic-settings`, `httpx`, `apscheduler`, `pytest`. Optional later: `vnstock`.
+- Node 22, Vite, React, TypeScript. Charts: **Apache ECharts** (`echarts` + `echarts-for-react`). No other chart kit.
+- Database: **MySQL 8** only. SQLAlchemy URL `mysql+pymysql://...`.
 - `backend` pytest: `pytest`. `frontend` test: `vitest` + React Testing Library.
 - CORS: frontend origin to API.
 
-**Done when:** `cd backend && pytest` exits 0 on empty tests; `cd frontend && npx vite build` succeeds on a hello root.
+**Done when:** `docker compose up -d` yields a reachable MySQL; `cd backend && pytest` exits 0 on empty tests; `cd frontend && npx vite build` succeeds on a hello root.
 
 ---
 
@@ -116,7 +117,7 @@ Nav: Market, Alerts. Top bar: `finmon`, `AsOf` placeholder, status chip. Min wid
 
 Tables from product design §6 that v1 needs: `symbol`, `daily_bar`, `quote_snapshot`, `watchlist_item`, `drawing`, `chart_note`, `page_note`, `page_note_revision`, `price_alert`, `alert_delivery`, `ingest_watermark` (source, job, `as_of`, status).
 
-Prices: integer **đồng**. Unique `(ticker, date)` on bars. SQLite default URL for local; SQLAlchemy so Postgres can replace later.
+Prices: integer **đồng**. Unique `(ticker, date)` on bars. MySQL 8, InnoDB, `utf8mb4`. Connection from `DATABASE_URL` (e.g. `mysql+pymysql://finmon:finmon@127.0.0.1:3306/finmon`). Alembic runs against MySQL only.
 
 **Done when:** `alembic upgrade head` creates tables.
 
@@ -188,7 +189,7 @@ Functions: `sma`, `ema`, `rsi`, `macd`, `bollinger`, `atr`, `volume_ma` on lists
 
 **Files:** `frontend/src/pages/Symbol.tsx`, `frontend/src/chart/DailyChart.tsx`
 
-Load bars + indicators. `lightweight-charts` for candles and volume. Token colors. Toolbar from design system §5 (pan + indicator menu first; drawing tools in Task 10). Ceiling/floor/ref as horizontal lines if quote has them. Empty state if no bars. Header: ticker, last, change, board.
+Load bars + indicators. **ECharts** candlestick series + volume bar series (`dataZoom` inside/slider). Map all series/axis/tooltip colors from design-system tokens (Vietnam: up `--up`, down `--down`). Toolbar from design system §5 (pan/`dataZoom` + indicator menu first; drawing tools in Task 10). Ceiling/floor/ref as `markLine`. Empty state if no bars. Header: ticker, last, change, board. Wrap in `frontend/src/chart/DailyChart.tsx` so pages never import `echarts` directly.
 
 **Done when:** opening a seeded ticker shows a daily candle chart with SMA20 toggle.
 
@@ -204,7 +205,7 @@ API:
 - `GET/PUT /api/symbols/{ticker}/chart-notes`
 - `GET/PUT /api/symbols/{ticker}/page-note` (body markdown; append revision)
 
-Frontend: overlay canvas/SVG aligned to chart time/price scale; tools horizontal, trend, rectangle, fib, text, pin. Save on mouse-up (debounce 300ms). Rail tab **Note**: textarea, Save note. Toast on save.
+Frontend: ECharts `graphic` components (and/or `markLine` / `markPoint`) anchored to category index + price, not pixels. Tools: horizontal, trend, rectangle, fib, text, pin. Save on mouse-up (debounce 300ms). Rail tab **Note**: textarea, Save note. Toast on save.
 
 **Done when:** reload restores drawings and both note types.
 
@@ -252,7 +253,7 @@ Chip: ok / stale (>1 trading day) / error / unconfigured. `AsOf` from watermark.
 
 1. Gallery still matches tokens (no one-off colors on Market/Symbol).
 2. Ingest (mocked or live DNSE) fills catalog; watchlist 30-minute path updates snapshots.
-3. Chart + indicators + drawings + page note persist.
+3. Chart (ECharts) + indicators + drawings + page note persist.
 4. Price alert sends Telegram (or mock) once.
 5. Company tab fails closed.
 6. `pytest` and `vitest` green.

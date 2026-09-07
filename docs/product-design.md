@@ -168,7 +168,8 @@ Small units, each with one job:
 - **Alert engine**: load rules, compare to last price, write delivery log, call Telegram once per fire.
 - **Pattern engine**: no network; numpy/pandas on 90D windows; write ranked hits.
 - **Scheduler**: ICT calendar (skip weekends/VN holidays when we have a holiday list; until then skip Sat/Sun only).
-- **Web app**: market table, chart+draw, notes, alerts CRUD, pattern CRUD, scan results.
+- **Web app**: market table, chart+draw (Apache ECharts), notes, alerts CRUD, pattern CRUD, scan results.
+- **Store**: MySQL 8.
 
 Compute indicators in the app (or a pure function module), not in SQL, so definitions stay testable.
 
