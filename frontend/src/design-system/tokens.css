@@ -1,0 +1,54 @@
+:root {
+  --bg: #0e1116;
+  --bg-elev: #161b22;
+  --bg-hover: #1c2330;
+  --bg-selected: #1a2740;
+  --border: #2a3340;
+  --text: #e6edf3;
+  --text-muted: #8b9bb4;
+  --text-faint: #5c6b82;
+  --up: #3dd68c;
+  --down: #f87171;
+  --warn: #e3b341;
+  --accent: #6ea8fe;
+  --accent-muted: #6ea8fe33;
+  --overlay: #00000099;
+  --font-ui: "IBM Plex Sans", "Noto Sans", sans-serif;
+  --font-num: "IBM Plex Mono", "Noto Sans Mono", ui-monospace, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --lh: 1.4;
+  --fw-reg: 400;
+  --fw-med: 500;
+  --fw-bold: 600;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --control-h: 32px;
+  --row-h: 36px;
+  --header-h: 48px;
+  --nav-w: 220px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh);
+  min-width: 1200px;
+}
+button, input, select, textarea { font-family: inherit; color: inherit; }
+a { color: var(--accent); }

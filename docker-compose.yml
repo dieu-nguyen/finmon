@@ -1,0 +1,18 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: finmon-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: finmon
+      MYSQL_USER: finmon
+      MYSQL_PASSWORD: finmon
+      MYSQL_ROOT_PASSWORD: finmon
+    ports:
+      - "3306:3306"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ufinmon", "-pfinmon"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
