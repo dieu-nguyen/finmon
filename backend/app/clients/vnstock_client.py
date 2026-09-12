@@ -21,6 +21,14 @@ class VnstockClient:
         except Exception as exc:  # pragma: no cover
             raise RuntimeError("vnstock unavailable") from exc
 
+        if self._settings.vnstock_api_key:
+            try:
+                import vnai
+
+                vnai.setup_api_key(self._settings.vnstock_api_key)
+            except Exception:
+                pass
+
         stock = Vnstock().stock(symbol=ticker, source="VCI")
         profile: Any = {}
         statements: dict[str, Any] = {}

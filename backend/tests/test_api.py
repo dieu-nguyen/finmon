@@ -22,7 +22,11 @@ def test_ingest_mocked(db):
             return httpx.Response(200, json=load_fixture("dnse_instruments.json"))
         if path.endswith("/ohlc"):
             return httpx.Response(200, json=load_fixture("dnse_ohlc.json"))
+        if path.endswith("/trades/latest"):
+            return httpx.Response(200, json={"trades": [{"matchPrice": 92.6, "boardId": "G1"}]})
         if path.endswith("/quotes/latest"):
+            if request.url.params.get("boardId") in {"HOSE", "HNX", "UPCOM"}:
+                return httpx.Response(404, json={"errorCode": 404, "message": "not found boardId"})
             return httpx.Response(200, json=load_fixture("dnse_quote.json"))
         if path.endswith("/secdef"):
             return httpx.Response(200, json=load_fixture("dnse_quote.json"))
