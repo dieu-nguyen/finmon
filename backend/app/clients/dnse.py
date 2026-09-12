@@ -218,21 +218,30 @@ def _looks_tv(payload: Any) -> bool:
     )
 
 
+def _prefer_main_board(rows: list[Any]) -> Any:
+    dicts = [r for r in rows if isinstance(r, dict)]
+    for r in dicts:
+        if str(r.get("boardId") or "").upper() == "G1":
+            return r
+    return dicts[0] if dicts else rows[0]
+
+
 def parse_quote(payload: Any, ticker: str, *, is_index: bool = False) -> Quote:
     raw = payload
     if isinstance(payload, dict):
-        for key in ("data", "quotes", "quote"):
-            inner = payload.get(key)
-            if isinstance(inner, list) and inner:
-                raw = inner[0]
-                break
-            if isinstance(inner, dict):
-                raw = inner
-                break
         if isinstance(payload.get("trades"), list) and payload["trades"]:
-            raw = payload["trades"][0]
+            raw = _prefer_main_board(payload["trades"])
+        else:
+            for key in ("data", "quotes", "quote"):
+                inner = payload.get(key)
+                if isinstance(inner, list) and inner:
+                    raw = _prefer_main_board(inner)
+                    break
+                if isinstance(inner, dict):
+                    raw = inner
+                    break
     if isinstance(raw, list) and raw:
-        raw = raw[0]
+        raw = _prefer_main_board(raw)
     if not isinstance(raw, dict):
         raw = {}
     last = _pick(
@@ -333,26 +342,55 @@ class DnseClient:
         )
         return parse_ohlc(resp.json(), symbol, is_index=market_type == "index")
 
+    @staticmethod
+    def _dnse_board_params(board_id: str | None) -> dict[str, str] | None:
+        """DNSE boardId is G1/G4/T4, not HOSE/HNX/UPCOM (those are market labels)."""
+        if not board_id:
+            return None
+        if board_id.upper() in {"HOSE", "HNX", "UPCOM", "HSX", "STO", "STX", "UPX", "DVX", "HCX"}:
+            return None
+        return {"boardId": board_id}
+
     def latest_quote(self, symbol: str, board_id: str | None = None) -> Quote:
-        params = {"boardId": board_id} if board_id else None
-        resp = self._request("GET", f"/price/{symbol}/quotes/latest", params=params)
-        quote = parse_quote(resp.json(), symbol)
+        params = self._dnse_board_params(board_id)
+        last = 0
+        ref = ceiling = floor = None
+        board = ""
         try:
-            sec = self._request(
-                "GET",
-                f"/price/{symbol}/secdef",
-                params=params,
+            trade = parse_quote(
+                self._request("GET", f"/price/{symbol}/trades/latest", params=params).json(),
+                symbol,
             )
-            extra = parse_quote(sec.json(), symbol)
-            quote = Quote(
-                ticker=symbol,
-                last=quote.last or extra.last,
-                ref=extra.ref if extra.ref is not None else quote.ref,
-                ceiling=extra.ceiling if extra.ceiling is not None else quote.ceiling,
-                floor=extra.floor if extra.floor is not None else quote.floor,
-                time=quote.time,
-                board=quote.board or extra.board or (board_id or ""),
-            )
+            last = trade.last
+            board = trade.board
         except httpx.HTTPError:
             pass
-        return quote
+        try:
+            quote = parse_quote(
+                self._request("GET", f"/price/{symbol}/quotes/latest", params=params).json(),
+                symbol,
+            )
+            last = last or quote.last
+            ref = quote.ref
+            ceiling = quote.ceiling
+            floor = quote.floor
+            board = board or quote.board
+        except httpx.HTTPError:
+            pass
+        try:
+            extra = parse_quote(self._request("GET", f"/price/{symbol}/secdef").json(), symbol)
+            last = last or extra.last
+            ref = extra.ref if extra.ref is not None else ref
+            ceiling = extra.ceiling if extra.ceiling is not None else ceiling
+            floor = extra.floor if extra.floor is not None else floor
+            board = board or extra.board
+        except httpx.HTTPError:
+            pass
+        return Quote(
+            ticker=symbol,
+            last=last,
+            ref=ref,
+            ceiling=ceiling,
+            floor=floor,
+            board=board or (board_id or ""),
+        )
