@@ -18,33 +18,8 @@ need() {
   fi
 }
 
-need docker
 need python3
 need npm
-
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE=(docker compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE=(docker-compose)
-else
-  echo "Missing required command: docker compose" >&2
-  exit 1
-fi
-
-echo "==> Starting MySQL"
-"${COMPOSE[@]}" up -d mysql
-
-echo "==> Waiting for MySQL"
-for _ in $(seq 1 60); do
-  if docker exec finmon-mysql mysqladmin ping -h 127.0.0.1 -ufinmon -pfinmon --silent >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-if ! docker exec finmon-mysql mysqladmin ping -h 127.0.0.1 -ufinmon -pfinmon --silent >/dev/null 2>&1; then
-  echo "MySQL did not become ready" >&2
-  exit 1
-fi
 
 if [[ ! -x "$VENV_DIR/bin/python" ]]; then
   echo "==> Creating backend virtualenv"
@@ -56,6 +31,33 @@ source "$VENV_DIR/bin/activate"
 echo "==> Installing backend"
 python -m pip install -q -U pip
 python -m pip install -q -e "$BACKEND_DIR[vnstock]"
+
+echo "==> Waiting for MySQL (DATABASE_URL in backend/.env)"
+(
+  cd "$BACKEND_DIR"
+  python - <<'PY'
+import sys
+import time
+
+from sqlalchemy import create_engine, text
+
+from app.config import get_settings
+
+url = get_settings().database_url
+engine = create_engine(url, pool_pre_ping=True)
+last_error = None
+for _ in range(60):
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        sys.exit(0)
+    except Exception as exc:
+        last_error = exc
+        time.sleep(1)
+print(f"MySQL did not become ready: {last_error}", file=sys.stderr)
+sys.exit(1)
+PY
+)
 
 echo "==> Running migrations"
 (
