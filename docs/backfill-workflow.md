@@ -2,7 +2,7 @@
 
 Accepted design, 2026-09-26. This describes the workflow to build. It is not implemented yet.
 
-History for the daily chart is loaded by a command you run yourself. The API process keeps the 30-minute watchlist poll, and that poll also maintains today's candle for pinned tickers. The weekday 16:30 history job inside the API process goes away.
+`start.sh` launches history backfill as its own process, separate from the API. That process catches up immediately, then runs again at 16:30 ICT on weekdays for as long as `start.sh` stays up. The API process keeps the 30-minute watchlist poll, and that poll maintains today's candle for pinned tickers until the after-close backfill replaces it. The weekday 16:30 history job inside the API process goes away.
 
 This document supersedes the product-design cadence for the instrument list and daily OHLCV ("daily" / "after close" / "catalog EOD"). Company data, indicators, alerts rules, and drawings stay as in the product design.
 
@@ -24,7 +24,7 @@ Both write `daily_bar`. They stay apart by the `source` column that already exis
 
 | Writer | When it runs | What it writes |
 | --- | --- | --- |
-| `python -m app.jobs.backfill` | When you start it | Symbol list, full daily history, catch-up of missing days. `daily_bar.source = dnse` |
+| `python -m app.jobs.backfill`, started by `start.sh` | Once at launch, then weekdays at 16:30 ICT while `start.sh` is still up | Symbol list, full daily history, catch-up of missing days. `daily_bar.source = dnse` |
 | 30-minute job inside the API | Weekdays while the API is up, during the session | `quote_snapshot` for pinned tickers, and today's forming candle with `daily_bar.source = quote` |
 
 A `dnse` bar is the exchange OHLC. A `quote` bar is built from sampled last prices. The chart reads `daily_bar` either way and draws one candle per date.
@@ -45,7 +45,7 @@ A `dnse` bar is the exchange OHLC. A `quote` bar is built from sampled last pric
 
 ## 3. Remove the 16:30 history job
 
-Delete the API scheduler job at 16:30 ICT (`_run_eod` / `ingest_instruments_and_bars`). History has one writer: the backfill command.
+Delete the API scheduler job at 16:30 ICT (`_run_eod` / `ingest_instruments_and_bars`). History has one writer: the backfill process. `start.sh` owns that process. The API scheduler does not.
 
 The 30-minute scheduler stays:
 
@@ -61,20 +61,32 @@ Each of those runs still evaluates price alerts, including the 15:00 run. There 
 
 ## 4. Backfill command
 
-From `backend`, with the API running or stopped:
+`start.sh` starts this after migrations, as a third process beside the API and the web app:
+
+```bash
+python -m app.jobs.backfill --follow
+```
+
+`--follow` runs one catch-up immediately, then sleeps until the next weekday 16:30 ICT and runs again, and repeats that wait until the process is stopped. `start.sh` prints that backfill is running. The UI and API come up without waiting for the catch-up to finish. Bars appear on the chart as each ticker commits.
+
+Ctrl+C on `start.sh` sends SIGINT to the backfill process, waits for the current chunk to commit, then stops the API and the web app.
+
+The same command still runs once and exits, for a repair:
 
 ```bash
 python -m app.jobs.backfill
 python -m app.jobs.backfill --ticker VCB
 ```
 
-Same DNSE key and secret, same MySQL database as the API. The UI does not start this command.
+Same DNSE key and secret, same MySQL database as the API.
 
-A MySQL named lock `finmon_backfill` is taken at start. If another backfill holds it, this process exits immediately and prints that a backfill is already running.
+A MySQL named lock `finmon_backfill` is taken for each catch-up pass. If another pass holds it, this pass exits immediately and prints that a backfill is already running. With `--follow`, that exit does not kill the waiter: it sleeps until the next 16:30 and tries again.
 
 Scope: listed stocks, ETFs, and indexes from DNSE `GET /instruments`. One process, one ticker at a time. Company fundamentals and live quotes are out of this command.
 
-You run it whenever you want the charts caught up. The first run walks history backward until DNSE returns an empty window. Later runs download only the days after `newest_date`, including a gap of several days if you skipped a while. Completed history is not downloaded again.
+The first pass walks history backward until DNSE returns an empty window. Later passes download only the days after `newest_date`, including a gap of several days if `start.sh` was stopped. Completed history is not downloaded again.
+
+On a rate-limit stop, `--follow` waits and runs the same catch-up again so the cursor resumes. A missing key, 401, or 403 is printed once and is not retried in a loop. A one-shot run (no `--follow`) still exits non-zero on those failures.
 
 ### 4.1 Cursor
 
@@ -101,7 +113,7 @@ New table `bar_sync`, one row per ticker:
 5. For each ticker, fill forward, then backward. Commit after each chunk. See 4.3.
 6. Print one summary line: completed, still partial, and error counts.
 
-Target end date is that latest weekday. Saturday and Sunday still run; they catch up through Friday.
+**Target end date.** On a weekday before 16:30 ICT, the target is the previous weekday. Today's candle stays with the 30-minute job. At 16:30 ICT and after, and all day Saturday and Sunday, the target is the latest weekday on or before today, so today's official bar is included.
 
 ### 4.3 Chunks
 
@@ -139,15 +151,17 @@ Re-running a finished ticker upserts the same dates. Rows are not duplicated.
 | 429 still failing after the client's existing retry | Leave the current ticker `partial`, stop the run |
 | Ctrl+C | Finish the current chunk commit, print the ticker, exit |
 
-DNSE OHLC limits are 50,000 requests per hour and 100,000 per day. A one-day catch-up is one request per ticker. The first full history is many years of chunks, so one sitting can hit the hourly cap. Progress already committed is kept. The same command continues the run.
+DNSE OHLC limits are 50,000 requests per hour and 100,000 per day. A one-day catch-up is one request per ticker. The first full history is many years of chunks, so one sitting can hit the hourly cap. Progress already committed is kept. A one-shot run stops there. `--follow` waits and starts another pass, which resumes from the cursor.
 
-Exit 0 when this invocation finished its queue. Exit non-zero when it stopped early (lock held, missing keys, auth failure, or rate limit).
+A pass exits 0 when its queue is finished. It exits non-zero when it stopped early (lock held, missing keys, auth failure, or rate limit).
 
 ### 4.6 During the session
 
-A backfill run writes today's DNSE bar when DNSE returns one, with `source = dnse`. After that row exists, the 30-minute job leaves it alone (section 5). The candle stays at the OHLC from that backfill until you run backfill again.
+A pass before 16:30 ICT does not request today's OHLC and does not overwrite today's `quote` bar. Pinned tickers keep the forming candle from section 5.
 
-The usual split: let the 30-minute job draw today while you have the API up during the session, and run backfill when you want history caught up, including a real today bar after the close.
+The 16:30 pass, and any pass started after 16:30 or on a weekend, writes today's DNSE bar with `source = dnse` and replaces the `quote` candle. After that row exists, the 30-minute job leaves it alone (section 5).
+
+If `start.sh` is stopped before 16:30, that after-close pass does not run. The next `start.sh` performs it: immediately, because the clock is already past 16:30 or the day has rolled over.
 
 ---
 
@@ -214,6 +228,9 @@ Use the existing DNSE fixtures. No live keys.
 - A failure after ticker A skips A on the next run and resumes the partial ticker.
 - An empty older window sets `history_floor`.
 - A weekend run still fetches through the latest weekday.
+- A weekday run before 16:30 ICT stops at the previous weekday and leaves today's `quote` bar in place.
+- A run at or after 16:30 ICT replaces today's `quote` bar with DNSE OHLC.
+- `--follow` after a rate-limit exit waits and runs another pass from the cursor.
 - A second process exits while the named lock is held.
 - The 30-minute path inserts today's `quote` bar from the first `last`, then raises high and lowers low on later lasts, and leaves `open` unchanged.
 - A `dnse` bar for today is left unchanged by a later quote poll.
@@ -223,7 +240,7 @@ Use the existing DNSE fixtures. No live keys.
 
 ## 7. Out of scope
 
-- Scheduling this command in the operating system. You start it.
+- An operating-system cron outside `start.sh`. Catch-up runs when `start.sh` starts, and at 16:30 ICT only while that process is still up.
 - Moving the 30-minute quote poll out of the API process.
 - Drawing the candle from ceiling, floor, or reference price.
 - Intraday bars, WebSocket, or a second vendor.
