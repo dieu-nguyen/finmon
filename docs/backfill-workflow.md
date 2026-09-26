@@ -71,14 +71,14 @@ python -m app.jobs.backfill --follow
 
 Ctrl+C on `start.sh` sends SIGINT to the backfill process, waits for the current chunk to commit, then stops the API and the web app.
 
-The same command still runs once and exits, for a repair:
+The same catch-up runs once and exits, without starting the API or the UI. Use this when you want history updated and the app left stopped:
 
 ```bash
 python -m app.jobs.backfill
 python -m app.jobs.backfill --ticker VCB
 ```
 
-Same DNSE key and secret, same MySQL database as the API.
+The first form catches up every listed symbol. `--ticker` limits that pass to one symbol. Both use the same cursor, so a later `start.sh` continues from wherever this run stopped. Same DNSE key and secret, same MySQL database as the API.
 
 A MySQL named lock `finmon_backfill` is taken for each catch-up pass. If another pass holds it, this pass exits immediately and prints that a backfill is already running. With `--follow`, that exit does not kill the waiter: it sleeps until the next 16:30 and tries again.
 
