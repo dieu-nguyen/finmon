@@ -270,8 +270,14 @@ def parse_quote(payload: Any, ticker: str, *, is_index: bool = False) -> Quote:
 
 
 class DnseClient:
-    def __init__(self, settings: Settings, transport: httpx.BaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        transport: httpx.BaseTransport | None = None,
+        limiter: Any | None = None,
+    ) -> None:
         self._settings = settings
+        self._limiter = limiter
         self._client = httpx.Client(
             base_url=settings.dnse_base_url.rstrip("/"),
             timeout=30.0,
@@ -285,6 +291,8 @@ class DnseClient:
         return bool(self._settings.dnse_api_key and self._settings.dnse_api_secret)
 
     def _request(self, method: str, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
+        if self._limiter is not None:
+            return self._request_paced(method, path, params)
         headers = sign_headers(method, path, self._settings.dnse_api_key, self._settings.dnse_api_secret)
         for attempt in range(4):
             resp = self._client.request(method, path, headers=headers, params=params)
@@ -303,6 +311,19 @@ class DnseClient:
             time.sleep(min(sleep_s, 30))
             headers = sign_headers(method, path, self._settings.dnse_api_key, self._settings.dnse_api_secret)
         raise RuntimeError("unreachable")
+
+    def _request_paced(self, method: str, path: str, params: dict[str, Any] | None) -> httpx.Response:
+        """Backfill calls wait out the real rate-limit reset. The 30s cap does not apply."""
+        while True:
+            self._limiter.acquire(path)
+            headers = sign_headers(method, path, self._settings.dnse_api_key, self._settings.dnse_api_secret)
+            resp = self._client.request(method, path, headers=headers, params=params)
+            if resp.status_code == 429:
+                self._limiter.sleep_for_429(path, resp.headers)
+                continue
+            resp.raise_for_status()
+            self._limiter.observe(path, resp.headers)
+            return resp
 
     def list_instruments(self) -> list[Instrument]:
         items: list[Instrument] = []

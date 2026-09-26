@@ -8,18 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import SessionLocal
 from app.jobs.evaluate_alerts import evaluate_alerts
-from app.jobs.ingest import ingest_instruments_and_bars, ingest_watchlist_quotes
+from app.jobs.ingest import ingest_watchlist_quotes
 from app.routers import alerts, annotations, bars, company, meta, symbols, watchlist
-
-
-def _run_eod() -> None:
-    settings = get_settings()
-    db = SessionLocal()
-    try:
-        ingest_instruments_and_bars(db, settings)
-        evaluate_alerts(db, settings)
-    finally:
-        db.close()
 
 
 def _run_quotes() -> None:
@@ -39,7 +29,6 @@ async def lifespan(_app: FastAPI):
     scheduler = None
     if os.environ.get("FINMON_TESTING") != "1":
         scheduler = BackgroundScheduler(timezone="Asia/Ho_Chi_Minh")
-        scheduler.add_job(_run_eod, CronTrigger(hour=16, minute=30, day_of_week="mon-fri", timezone="Asia/Ho_Chi_Minh"))
         scheduler.add_job(
             _run_quotes,
             CronTrigger(minute="0,30", hour="9-14", day_of_week="mon-fri", timezone="Asia/Ho_Chi_Minh"),

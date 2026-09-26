@@ -75,7 +75,18 @@ fi
 
 BACKEND_PID=""
 FRONTEND_PID=""
+BACKFILL_PID=""
 cleanup() {
+  if [[ -n "$BACKFILL_PID" ]] && kill -0 "$BACKFILL_PID" >/dev/null 2>&1; then
+    kill -INT "$BACKFILL_PID" >/dev/null 2>&1 || true
+    for _ in $(seq 1 60); do
+      kill -0 "$BACKFILL_PID" >/dev/null 2>&1 || break
+      sleep 1
+    done
+    if kill -0 "$BACKFILL_PID" >/dev/null 2>&1; then
+      kill -TERM "$BACKFILL_PID" >/dev/null 2>&1 || true
+    fi
+  fi
   if [[ -n "$FRONTEND_PID" ]] && kill -0 "$FRONTEND_PID" >/dev/null 2>&1; then
     kill "$FRONTEND_PID" >/dev/null 2>&1 || true
   fi
@@ -84,6 +95,13 @@ cleanup() {
   fi
 }
 trap cleanup EXIT INT TERM
+
+echo "==> Starting backfill"
+(
+  cd "$BACKEND_DIR"
+  exec python -m app.jobs.backfill --follow
+) &
+BACKFILL_PID=$!
 
 echo "==> Starting API at http://${BACKEND_HOST}:${BACKEND_PORT}"
 (
@@ -103,7 +121,8 @@ echo
 echo "finmon is running."
 echo "  UI:  http://localhost:${FRONTEND_PORT}"
 echo "  API: http://${BACKEND_HOST}:${BACKEND_PORT}"
+echo "  Backfill: python -m app.jobs.backfill --follow"
 echo "Press Ctrl+C to stop."
 echo
 
-wait "$BACKEND_PID" "$FRONTEND_PID"
+wait "$BACKEND_PID" "$FRONTEND_PID" "$BACKFILL_PID"

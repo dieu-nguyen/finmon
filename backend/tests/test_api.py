@@ -4,7 +4,7 @@ import httpx
 
 from app.clients.dnse import DnseClient
 from app.config import Settings
-from app.jobs.ingest import ingest_instruments_and_bars, ingest_watchlist_quotes
+from app.jobs.ingest import ingest_watchlist_quotes
 from app.models import DailyBar, QuoteSnapshot, Symbol, WatchlistItem
 from tests.conftest import load_fixture
 
@@ -34,13 +34,11 @@ def test_ingest_mocked(db):
 
     transport = httpx.MockTransport(handler)
     client = DnseClient(settings, transport=transport)
+    db.add(Symbol(ticker="VCB", name="Vietcombank", board="HOSE", type="stock", listed=True))
     db.add(WatchlistItem(ticker="VCB", position=0))
     db.commit()
-    ingest_instruments_and_bars(db, settings, client, force=True)
     ingest_watchlist_quotes(db, settings, client, force=True)
     assert db.get(Symbol, "VCB") is not None
-    bars = db.query(DailyBar).filter(DailyBar.ticker == "VCB").all()
-    assert len(bars) == 3
     snap = db.get(QuoteSnapshot, "VCB")
     assert snap is not None
     assert snap.last == 92600

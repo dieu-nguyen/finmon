@@ -139,3 +139,15 @@ class CompanyCache(Base):
     ticker: Mapped[str] = mapped_column(String(32), primary_key=True)
     payload: Mapped[dict] = mapped_column(JSON)
     fetched_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class BarSync(Base):
+    __tablename__ = "bar_sync"
+
+    ticker: Mapped[str] = mapped_column(String(32), primary_key=True)
+    oldest_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    newest_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    history_floor: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    last_error: Mapped[str] = mapped_column(String(512), default="")
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

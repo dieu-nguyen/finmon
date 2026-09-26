@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -26,17 +26,6 @@ def write_watermark(db: Session, job: str, status: str, message: str = "") -> No
     db.commit()
 
 
-def is_weekend_ict(when: datetime | None = None) -> bool:
-    now = when or datetime.now(ICT)
-    return now.weekday() >= 5
-
-
-def market_type_for(symbol: Symbol) -> str:
-    if symbol.type == "index":
-        return "index"
-    return "stock"
-
-
 def upsert_instrument(db: Session, inst: Instrument) -> None:
     row = db.get(Symbol, inst.ticker)
     if row is None:
@@ -56,71 +45,36 @@ def upsert_instrument(db: Session, inst: Instrument) -> None:
     row.listed = inst.listed
 
 
-def ingest_instruments_and_bars(
-    db: Session,
-    settings: Settings,
-    client: DnseClient | None = None,
-    *,
-    force: bool = False,
-) -> None:
-    if client is None:
-        client = DnseClient(settings)
-    if not client.configured():
-        write_watermark(db, "eod", "unconfigured", "DNSE keys missing")
+def apply_quote_candle(db: Session, ticker: str, last: int, today: date) -> None:
+    """Form today's candle from sampled last prices. A DNSE bar for today is left as stored."""
+    if last <= 0:
         return
-    if not force and is_weekend_ict():
-        write_watermark(db, "eod", "ok", "weekend skip")
+    row = db.scalar(select(DailyBar).where(DailyBar.ticker == ticker, DailyBar.date == today))
+    if row is not None and row.source == "dnse":
         return
-    try:
-        instruments = client.list_instruments()
-        wanted = [
-            i
-            for i in instruments
-            if i.type in {"stock", "etf", "index"} and i.listed
-        ]
-        if settings.ingest_limit:
-            wanted = wanted[: settings.ingest_limit]
-        for inst in wanted:
-            upsert_instrument(db, inst)
-        db.commit()
-
-        now = datetime.now(timezone.utc)
-        to_ts = int(now.timestamp())
-        from_ts = int((now - timedelta(days=400)).timestamp())
-        for inst in wanted:
-            mt = "index" if inst.type == "index" else "stock"
-            bars = client.ohlc(inst.ticker, from_ts, to_ts, market_type=mt)
-            for bar in bars:
-                existing = db.scalar(
-                    select(DailyBar).where(DailyBar.ticker == bar.ticker, DailyBar.date == bar.date)
-                )
-                if existing:
-                    existing.open = bar.open
-                    existing.high = bar.high
-                    existing.low = bar.low
-                    existing.close = bar.close
-                    existing.volume = bar.volume
-                    existing.value = bar.value
-                else:
-                    db.add(
-                        DailyBar(
-                            ticker=bar.ticker,
-                            date=bar.date,
-                            open=bar.open,
-                            high=bar.high,
-                            low=bar.low,
-                            close=bar.close,
-                            volume=bar.volume,
-                            value=bar.value,
-                            source="dnse",
-                        )
-                    )
-            db.commit()
-        write_watermark(db, "eod", "ok")
-    except Exception as exc:
-        db.rollback()
-        write_watermark(db, "eod", "error", str(exc))
-        raise
+    if row is None:
+        prev = db.scalar(
+            select(DailyBar)
+            .where(DailyBar.ticker == ticker, DailyBar.date < today)
+            .order_by(DailyBar.date.desc())
+        )
+        db.add(
+            DailyBar(
+                ticker=ticker,
+                date=today,
+                open=prev.close if prev is not None else last,
+                high=last,
+                low=last,
+                close=last,
+                volume=0,
+                value=0,
+                source="quote",
+            )
+        )
+        return
+    row.high = max(row.high, last)
+    row.low = min(row.low, last)
+    row.close = last
 
 
 def ingest_watchlist_quotes(
@@ -165,6 +119,8 @@ def ingest_watchlist_quotes(
                 row.ceiling = quote.ceiling
                 row.floor = quote.floor
                 row.time = datetime.now(timezone.utc).replace(tzinfo=None)
+            if quote.last:
+                apply_quote_candle(db, ticker, quote.last, now.date())
         db.commit()
         write_watermark(db, "quotes", "ok")
     except Exception as exc:

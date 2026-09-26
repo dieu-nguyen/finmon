@@ -1,6 +1,6 @@
 # History backfill and the session candle
 
-Accepted design, 2026-09-26. This describes the workflow to build. It is not implemented yet.
+Accepted design, 2026-09-26. Implemented by the backfill command, the 30-minute quote candle, and `start.sh`.
 
 `start.sh` launches history backfill as its own process, separate from the API. That process catches up immediately, then runs again at 16:30 ICT on weekdays for as long as `start.sh` stays up. The API process keeps the 30-minute watchlist poll, and that poll maintains today's candle for pinned tickers until the after-close backfill replaces it. The weekday 16:30 history job inside the API process goes away.
 
