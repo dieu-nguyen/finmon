@@ -242,6 +242,10 @@ def run_once(
                 return EXIT_FATAL
             raise
         catalog = [i for i in instruments if i.type in {"stock", "etf", "index"} and i.listed]
+        deduped: dict[str, object] = {}
+        for inst in catalog:
+            deduped.setdefault(inst.ticker, inst)
+        catalog = list(deduped.values())
         wanted = catalog
         if ticker:
             wanted = [i for i in catalog if i.ticker == ticker.upper()]

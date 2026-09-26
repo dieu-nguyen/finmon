@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import select, text
+from sqlalchemy.orm import sessionmaker
 
 from app.clients.dnse import DnseClient
 from app.config import Settings
@@ -85,6 +86,19 @@ def _bar(ticker: str, day: date, *, close: int, source: str = "dnse", open_: int
         value=0,
         source=source,
     )
+
+
+def test_duplicate_instrument_ticker_is_stored_once(db):
+    feed = Feed(["VEOF", "VEOF"])
+    feed.bars["VEOF"] = [date(2026, 9, 28)]
+    now = datetime(2026, 9, 28, 16, 30, tzinfo=ICT)
+    session = sessionmaker(bind=db.get_bind(), autoflush=False)()
+    try:
+        assert run_once(session, _settings(), feed.client(), now=now) == 0
+        assert len(session.scalars(select(Symbol).where(Symbol.ticker == "VEOF")).all()) == 1
+        assert len(session.scalars(select(BarSync).where(BarSync.ticker == "VEOF")).all()) == 1
+    finally:
+        session.close()
 
 
 def test_target_end_rules():

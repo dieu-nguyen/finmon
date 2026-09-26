@@ -29,6 +29,8 @@ def write_watermark(db: Session, job: str, status: str, message: str = "") -> No
 def upsert_instrument(db: Session, inst: Instrument) -> None:
     row = db.get(Symbol, inst.ticker)
     if row is None:
+        row = next((obj for obj in db.new if isinstance(obj, Symbol) and obj.ticker == inst.ticker), None)
+    if row is None:
         db.add(
             Symbol(
                 ticker=inst.ticker,
