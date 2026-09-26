@@ -86,7 +86,7 @@ Scope: listed stocks, ETFs, and indexes from DNSE `GET /instruments`. One proces
 
 The first pass walks history backward until DNSE returns an empty window. Later passes download only the days after `newest_date`, including a gap of several days if `start.sh` was stopped. Completed history is not downloaded again.
 
-On a rate-limit stop, `--follow` waits and runs the same catch-up again so the cursor resumes. A missing key, 401, or 403 is printed once and is not retried in a loop. A one-shot run (no `--follow`) still exits non-zero on those failures.
+A missing key, 401, or 403 is printed once and is not retried in a loop. A one-shot run (no `--follow`) still exits non-zero on those failures. A rate limit does not end the pass: section 4.5 sleeps until the window resets and continues.
 
 ### 4.1 Cursor
 
@@ -148,12 +148,30 @@ Re-running a finished ticker upserts the same dates. Rows are not duplicated.
 | --- | --- |
 | One ticker returns 404 or another per-symbol error | Set that `bar_sync` row to `error` with `last_error`, continue with the next ticker |
 | 401 or 403 | Stop the run. The key is rejected |
-| 429 still failing after the client's existing retry | Leave the current ticker `partial`, stop the run |
+| 429 | Sleep until `X-RateLimit-Reset`, then retry the same chunk in this pass |
 | Ctrl+C | Finish the current chunk commit, print the ticker, exit |
 
-DNSE OHLC limits are 50,000 requests per hour and 100,000 per day. A one-day catch-up is one request per ticker. The first full history is many years of chunks, so one sitting can hit the hourly cap. Progress already committed is kept. A one-shot run stops there. `--follow` waits and starts another pass, which resumes from the cursor.
+DNSE limits are per API key and per endpoint. Backfill calls two of them:
 
-A pass exits 0 when its queue is finished. It exits non-zero when it stopped early (lock held, missing keys, auth failure, or rate limit).
+| Endpoint | Published rate (per hour) | Published quota (per 24h) | Backfill pauses itself at |
+| --- | --- | --- | --- |
+| `GET /instruments` | 10,000 | 100,000 | 8,000 in the rolling hour |
+| `GET /price/ohlc` | 50,000 | 100,000 | 45,000 in the rolling hour, or 90,000 in the rolling 24h |
+
+The 30-minute job calls latest trade, latest quote, and security definition. Those are separate endpoint buckets, so a backfill does not spend the quote job's allowance, and the quote job does not spend the OHLC allowance.
+
+The backfill sends one request at a time. After every response it reads `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`. It also counts its own calls in a rolling hour and a rolling 24 hours.
+
+It sleeps before the next request when either of these is true:
+
+- The local count has reached the pause row in the table above.
+- `X-RateLimit-Remaining` is under 100.
+
+Sleep lasts until `X-RateLimit-Reset` when that header is present. Otherwise it lasts until the oldest call in the local window is old enough that the count drops under the pause line. The current chunk is committed before the sleep, so stopping during the wait keeps that progress. The same pass continues with the next chunk after the sleep. This wait is the full reset interval. The DNSE client's 30-second cap on 429 retries does not apply to backfill calls.
+
+A 429 follows the same wait: sleep until reset, then retry that chunk. The ticker stays `partial` only if the process is stopped during the wait. `--follow` does not start a second copy while this pass is sleeping. A one-shot run waits the same way and then finishes its queue.
+
+A pass exits 0 when its queue is finished. It exits non-zero when it stopped early (lock held, missing keys, or auth failure).
 
 ### 4.6 During the session
 
@@ -230,7 +248,8 @@ Use the existing DNSE fixtures. No live keys.
 - A weekend run still fetches through the latest weekday.
 - A weekday run before 16:30 ICT stops at the previous weekday and leaves today's `quote` bar in place.
 - A run at or after 16:30 ICT replaces today's `quote` bar with DNSE OHLC.
-- `--follow` after a rate-limit exit waits and runs another pass from the cursor.
+- The backfill sleeps before the next OHLC call when its own hourly count reaches 45,000, when its 24h count reaches 90,000, or when `X-RateLimit-Remaining` is under 100, then continues the same pass.
+- A 429 sleeps until `X-RateLimit-Reset` and retries the same chunk. The 30-second client cap is not used.
 - A second process exits while the named lock is held.
 - The 30-minute path inserts today's `quote` bar from the first `last`, then raises high and lowers low on later lasts, and leaves `open` unchanged.
 - A `dnse` bar for today is left unchanged by a later quote poll.
