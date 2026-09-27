@@ -1,0 +1,18 @@
+---
+description: UX is the first principle for every finmon design and change
+alwaysApply: true
+---
+
+# UX first
+
+UX is the first principle for every design and change in finmon. Performance and convenience come before showing the full catalog, matching an internal data shape, or filling a screen with every available field.
+
+Before adding or changing a screen, query, or job, choose the fastest path for the person using it.
+
+- The first paint is a small, useful set. A table loads one page, not the whole symbol list.
+- Search, board, type, and watchlist narrow the request. A slower response for a wider query must not replace a narrower result already on screen.
+- Separate what the person is looking up: stocks, fund certificates, and indices stay in their own lists.
+- One query returns the rows on screen. Cancel the previous request when the input changes so typing stays responsive.
+- When two approaches both return the right data, ship the one that is faster to load and easier to scan.
+
+Market example: open on one page of stocks. Typing VHM replaces that page with matches. The in-flight full-catalog response is discarded.
