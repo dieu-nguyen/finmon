@@ -14,6 +14,7 @@ from app.clients.dnse import DnseClient, OhlcvBar
 from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.jobs.ingest import upsert_instrument
+from app.jobs.pattern_scan import run_pattern_scan
 from app.jobs.rate_limit import BackfillInterrupted, RateLimiter
 from app.models import BarSync, DailyBar, Symbol
 
@@ -24,6 +25,12 @@ EXIT_LOCK = 2
 EXIT_FATAL = 3
 EXIT_INTERRUPT = 130
 _MAX_WINDOWS = 80
+
+
+def allows_official_bar(now: datetime) -> bool:
+    """True when this pass may include today's official bar, including a weekend catch-up."""
+    local = now.astimezone(ICT) if now.tzinfo else now.replace(tzinfo=ICT)
+    return not (local.weekday() < 5 and (local.hour, local.minute) < (16, 30))
 
 
 def target_end(now: datetime) -> date:
@@ -68,12 +75,29 @@ def _caught_up(sync: BarSync, target: date) -> bool:
 
 
 def _lock(db: Session) -> bool:
-    got = db.execute(text("SELECT GET_LOCK(:name, 0)"), {"name": LOCK_NAME}).scalar()
-    return int(got or 0) == 1
+    """Hold the advisory lock on its own connection so session commits cannot drop it."""
+    conn = db.get_bind().connect()
+    try:
+        got = conn.execute(text("SELECT GET_LOCK(:name, 0)"), {"name": LOCK_NAME}).scalar()
+        conn.commit()
+    except Exception:
+        conn.close()
+        raise
+    if int(got or 0) != 1:
+        conn.close()
+        return False
+    db.info["backfill_lock_conn"] = conn
+    return True
 
 
 def _unlock(db: Session) -> None:
-    db.execute(text("SELECT RELEASE_LOCK(:name)"), {"name": LOCK_NAME})
+    conn = db.info.pop("backfill_lock_conn", None)
+    if conn is None:
+        return
+    try:
+        conn.execute(text("SELECT RELEASE_LOCK(:name)"), {"name": LOCK_NAME})
+    finally:
+        conn.close()
 
 
 def _bounds(db: Session, ticker: str, target: date) -> tuple[date | None, date | None]:
@@ -315,6 +339,11 @@ def run_once(
         partial = sum(1 for row in tracked if row.status == "partial")
         errors = sum(1 for row in tracked if row.status == "error")
         print(f"completed={completed} partial={partial} error={errors}")
+        if allows_official_bar(local_now):
+            try:
+                run_pattern_scan(db, target, settings)
+            except Exception as exc:
+                print(f"pattern scan error: {exc}")
         return EXIT_OK
     except BackfillInterrupted:
         print(f"stopped at {current}" if current else "stopped")

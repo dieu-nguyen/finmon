@@ -24,7 +24,7 @@ Success looks like:
 - When last price crosses an alert you set, Telegram gets a message on that 30-minute poll, while the API is up in session.
 - After the backfill pass that writes the official bar, a job scores enabled look-alike patterns. You open a short hit list, not the catalog.
 
-The first three bullets are **v1**. Pattern compare is **v1.1** (accepted, not built yet).
+The first three bullets are **v1**. Pattern compare is **v1.1**.
 
 Out of scope for this product:
 
@@ -91,7 +91,7 @@ Evaluation: the 30-minute watchlist poll, while the API is up in session, includ
 
 Pattern compare sends its own Telegram message from the scan job. That is not a price alert.
 
-### 2.6 Pattern compare (v1.1, not built yet)
+### 2.6 Pattern compare (v1.1)
 
 Accepted. The screen does not score the catalog.
 
@@ -235,7 +235,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 4. Price alerts → Telegram
 5. Company tab (on demand, 24h cache)
 
-**v1.1 — look-alike (accepted, not built yet)**
+**v1.1 — look-alike**
 
 6. Job after the official bar, Scans hit list, side-by-side charts for those 90 sessions, one Telegram message
 

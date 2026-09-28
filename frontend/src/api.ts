@@ -65,6 +65,40 @@ function withRange(path: string, range?: { from?: string; to?: string }) {
   return q ? `${path}?${q}` : path;
 }
 
+export type Pattern = {
+  id: number;
+  name: string;
+  kind: string;
+  schedule: string;
+  enabled: boolean;
+  spec: { reference: string; min_score: number; top_k: number };
+};
+
+export type ScanHit = {
+  ticker: string;
+  name: string;
+  score: number;
+  window_start: string;
+  window_end: string;
+};
+
+export type PatternHits = {
+  pattern_id: number;
+  name: string;
+  reference: string;
+  as_of: string | null;
+  reference_compared: boolean | null;
+  hits: ScanHit[];
+};
+
+export type PatternInput = {
+  name: string;
+  reference: string;
+  min_score: number;
+  top_k: number;
+  enabled: boolean;
+};
+
 export const api = {
   health: () => req<Health>("/api/health"),
   symbols: (q = "", init?: RequestInit) => req<SymbolPage>(`/api/symbols${q}`, init),
@@ -89,4 +123,11 @@ export const api = {
     req<Alert>("/api/alerts", { method: "POST", body: JSON.stringify(body) }),
   deleteAlert: (id: number) => req(`/api/alerts/${id}`, { method: "DELETE" }),
   company: (ticker: string) => req<Record<string, unknown>>(`/api/symbols/${ticker}/company`),
+  patterns: () => req<Pattern[]>("/api/patterns"),
+  patternHits: (id: number, init?: RequestInit) => req<PatternHits>(`/api/patterns/${id}/hits`, init),
+  savePattern: (body: PatternInput, id?: number) =>
+    req<Pattern>(id ? `/api/patterns/${id}` : "/api/patterns", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(body),
+    }),
 };

@@ -22,7 +22,11 @@ export function AppShell() {
       </header>
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", minHeight: 0 }}>
         <nav style={{ borderRight: "1px solid var(--border)", padding: "var(--space-3)" }}>
-          {["/market", "/alerts"].map((to) => (
+          {[
+            ["/market", "Market"],
+            ["/alerts", "Alerts"],
+            ["/scans", "Scans"],
+          ].map(([to, label]) => (
             <NavLink
               key={to}
               to={to}
@@ -37,7 +41,7 @@ export function AppShell() {
                 borderLeft: isActive ? "2px solid var(--accent)" : "2px solid transparent",
               })}
             >
-              {to === "/market" ? "Market" : "Alerts"}
+              {label}
             </NavLink>
           ))}
         </nav>
