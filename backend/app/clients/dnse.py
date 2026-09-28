@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import re
 import time
 import urllib.parse
 import uuid
@@ -100,13 +101,41 @@ def to_dong(value: Any, *, is_index: bool = False) -> int:
     return int(round(x))
 
 
+_WARRANT_TICKER = re.compile(r"^C[A-Z]{3}\d{4}$")
+
+
+def _raw_name(raw: dict[str, Any]) -> str:
+    value = _pick(raw, "name", "organName", "symbolName", "fullName")
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _raw_ticker(raw: dict[str, Any]) -> str:
+    value = _pick(raw, "symbol", "ticker", "code")
+    return str(value or "").upper()
+
+
 def classify_type(raw: dict[str, Any]) -> str:
     blob = " ".join(str(v) for v in raw.values()).lower()
+    name = _raw_name(raw).lower()
+    ticker = _raw_ticker(raw)
+    board = board_from(raw)
     if "etf" in blob or "chứng chỉ quỹ" in blob or "ccq" in blob:
         return "etf"
+    if (
+        board == "DVX"
+        or ticker.startswith("41I")
+        or ticker.startswith("VN30F")
+        or "hđtl" in name
+        or "hợp đồng tương lai" in name
+    ):
+        return "futures"
+    if "chứng quyền" in name or (not name.strip() and _WARRANT_TICKER.match(ticker) is not None):
+        return "warrant"
     if "index" in blob or "chỉ số" in blob:
         return "index"
-    if board_from(raw) == "HCX" or "trái phiếu" in blob:
+    if board == "HCX" or "trái phiếu" in blob:
         return "bond"
     return "stock"
 

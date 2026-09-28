@@ -54,19 +54,35 @@ class Feed:
         self.bars: dict[str, list[date]] = {}
         self.fail: set[str] = set()
         self.ranges: list[tuple[str, date, date]] = []
+        self.instruments_payload: list[dict] | None = None
+        self.status_for: dict[str, int] = {}
+        self.second_bar: tuple[float, float, float, float, int] | None = None
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/instruments"):
+            if self.instruments_payload is not None:
+                return httpx.Response(200, json={"data": self.instruments_payload})
             return httpx.Response(200, json=_instruments(self.tickers))
         if request.url.path.endswith("/ohlc"):
             symbol = request.url.params["symbol"]
             start = datetime.fromtimestamp(int(request.url.params["from"]), timezone.utc).date()
             end = datetime.fromtimestamp(int(request.url.params["to"]), timezone.utc).date()
             self.ranges.append((symbol, start, end))
+            if symbol in self.status_for:
+                return httpx.Response(self.status_for[symbol], json={"error": "rejected"})
             if symbol in self.fail:
                 return httpx.Response(404, json={"error": "missing"})
             days = [day for day in self.bars.get(symbol, []) if start <= day <= end]
-            return httpx.Response(200, json=_ohlc(days))
+            payload = _ohlc(days)
+            if self.second_bar is not None and days:
+                open_, high, low, close, volume = self.second_bar
+                payload["t"].append(payload["t"][-1])
+                payload["o"].append(open_)
+                payload["h"].append(high)
+                payload["l"].append(low)
+                payload["c"].append(close)
+                payload["v"].append(volume)
+            return httpx.Response(200, json=payload)
         return httpx.Response(404, json={"error": request.url.path})
 
     def client(self) -> DnseClient:
@@ -292,6 +308,113 @@ def test_quote_poll_does_not_change_dnse_bar(db):
     assert candle.high == 90_000
     snap = db.get(QuoteSnapshot, "VCB")
     assert snap.last == 99_000
+
+
+def test_duplicate_date_in_one_chunk_keeps_last_bar(db):
+    day = date(2026, 9, 28)
+    feed = Feed(["VCB"])
+    feed.bars["VCB"] = [day]
+    feed.second_bar = (21, 23, 20, 22, 9)
+    now = datetime(2026, 9, 28, 16, 30, tzinfo=ICT)
+    session = sessionmaker(bind=db.get_bind(), autoflush=False)()
+    try:
+        assert run_once(session, _settings(), feed.client(), now=now) == 0
+        sync = session.get(BarSync, "VCB")
+        assert sync is not None
+        assert sync.status == "complete"
+        bars = session.scalars(select(DailyBar).where(DailyBar.ticker == "VCB", DailyBar.date == day)).all()
+        assert len(bars) == 1
+        assert bars[0].open == 21_000
+        assert bars[0].high == 23_000
+        assert bars[0].low == 20_000
+        assert bars[0].close == 22_000
+        assert bars[0].volume == 9
+        feed.ranges.clear()
+        feed.bars["VCB"] = [day, date(2026, 9, 29)]
+        later = datetime(2026, 9, 29, 16, 30, tzinfo=ICT)
+        assert run_once(session, _settings(), feed.client(), now=later) == 0
+        assert feed.ranges == [("VCB", date(2026, 9, 29), date(2026, 9, 29))]
+        assert session.get(BarSync, "VCB").status == "complete"
+    finally:
+        session.close()
+
+
+def test_bond_and_futures_are_skipped_without_ohlc(db):
+    db.add(Symbol(ticker="BAB122030", name="BAB122030", board="HCX", type="bond", listed=True))
+    db.add(BarSync(ticker="BAB122030", status="error", last_error="http 400"))
+    db.add(Symbol(ticker="41I1G3000", name="HĐTL chỉ số VN30", board="DVX", type="index", listed=True))
+    db.add(BarSync(ticker="41I1G3000", status="pending", last_error=""))
+    db.add(Symbol(ticker="VN30F2305", name="VN30F2305", board="HNX", type="stock", listed=True))
+    db.add(BarSync(ticker="VN30F2305", status="error", last_error="http 400"))
+    db.commit()
+    feed = Feed([])
+    feed.instruments_payload = [
+        {"symbol": "BAB122030", "name": "BAB122030", "board": "HCX"},
+        {"symbol": "41I1G3000", "name": "HĐTL chỉ số VN30", "board": "DVX"},
+        {"symbol": "VN30F2305", "name": "VN30F2305", "board": "HNX"},
+    ]
+    now = datetime(2026, 9, 28, 16, 30, tzinfo=ICT)
+    assert run_once(db, _settings(), feed.client(), now=now) == 0
+    assert db.get(BarSync, "BAB122030").status == "skipped"
+    assert db.get(BarSync, "41I1G3000").status == "skipped"
+    assert db.get(BarSync, "VN30F2305").status == "skipped"
+    assert feed.ranges == []
+    feed.ranges.clear()
+    assert run_once(db, _settings(), feed.client(), now=now) == 0
+    assert feed.ranges == []
+    assert db.get(BarSync, "BAB122030").status == "skipped"
+
+
+def test_warrant_http_400_is_skipped_and_not_retried(db):
+    feed = Feed([])
+    feed.instruments_payload = [
+        {"symbol": "CACB2206", "name": "Chứng quyền ACB", "board": "HOSE"},
+    ]
+    feed.status_for["CACB2206"] = 400
+    now = datetime(2026, 9, 28, 16, 30, tzinfo=ICT)
+    assert run_once(db, _settings(), feed.client(), now=now) == 0
+    sync = db.get(BarSync, "CACB2206")
+    assert sync is not None
+    assert sync.status == "skipped"
+    assert db.scalar(select(DailyBar).where(DailyBar.ticker == "CACB2206")) is None
+    feed.ranges.clear()
+    assert run_once(db, _settings(), feed.client(), now=now) == 0
+    assert feed.ranges == []
+    assert db.get(BarSync, "CACB2206").status == "skipped"
+
+
+def test_warrant_with_bars_is_stored(db):
+    day = date(2026, 9, 28)
+    feed = Feed([])
+    feed.instruments_payload = [
+        {"symbol": "CACB2206", "name": "Chứng quyền ACB", "board": "HOSE"},
+    ]
+    feed.bars["CACB2206"] = [day]
+    now = datetime(2026, 9, 28, 16, 30, tzinfo=ICT)
+    assert run_once(db, _settings(), feed.client(), now=now) == 0
+    sync = db.get(BarSync, "CACB2206")
+    assert sync is not None
+    assert sync.status == "complete"
+    bar = db.scalar(select(DailyBar).where(DailyBar.ticker == "CACB2206", DailyBar.date == day))
+    assert bar is not None
+    assert bar.close == 11_000
+    assert db.get(Symbol, "CACB2206").type == "warrant"
+
+
+def test_stock_and_etf_http_400_stay_error(db):
+    feed = Feed([])
+    feed.instruments_payload = [
+        {"symbol": "VCB", "name": "Vietcombank", "boardId": "HOSE", "securityGroupId": "STOCK"},
+        {"symbol": "VEOF", "name": "VinaCapital ETF", "boardId": "HOSE"},
+    ]
+    feed.status_for["VCB"] = 400
+    feed.status_for["VEOF"] = 400
+    now = datetime(2026, 9, 28, 16, 30, tzinfo=ICT)
+    assert run_once(db, _settings(), feed.client(), now=now) == 0
+    assert db.get(BarSync, "VCB").status == "error"
+    assert db.get(BarSync, "VEOF").status == "error"
+    assert db.get(Symbol, "VCB").type == "stock"
+    assert db.get(Symbol, "VEOF").type == "etf"
 
 
 def test_limiter_pauses_at_ohlc_ceilings_and_remaining():
