@@ -1,4 +1,4 @@
-from app.clients.dnse import DnseClient, parse_instruments, parse_ohlc, parse_quote, to_dong
+from app.clients.dnse import DnseClient, classify_type, parse_instruments, parse_ohlc, parse_quote, to_dong
 from tests.conftest import load_fixture
 
 
@@ -9,6 +9,15 @@ def test_parse_instruments():
     assert by["VCB"].type == "stock"
     assert by["E1VFVN30"].type == "etf"
     assert by["VNINDEX"].type == "index"
+
+
+def test_hcx_or_trai_phieu_classifies_as_bond():
+    assert classify_type({"symbol": "BAB122030", "name": "BAB122030", "board": "HCX"}) == "bond"
+    assert classify_type({"symbol": "BOND1", "name": "Trái phiếu doanh nghiệp", "board": "HOSE"}) == "bond"
+    parsed = parse_instruments([{"symbol": "BAB122030", "name": "BAB122030", "board": "HCX"}])
+    assert parsed[0].type == "bond"
+    assert parsed[0].board == "HCX"
+    assert classify_type({"symbol": "E1", "name": "ETF trái phiếu", "board": "HCX"}) == "etf"
 
 
 def test_parse_ohlc_dong():

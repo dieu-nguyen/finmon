@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type Bar, type SymbolRow } from "../api";
+import { displayBoard } from "./Market";
 import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Tabs, Toast } from "../design-system";
 import { DailyChart } from "../chart/DailyChart";
 import type { Drawing, DrawingTool } from "../chart/drawings";
@@ -27,16 +28,16 @@ export function SymbolPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [b, symbols, ind, dr, pn] = await Promise.all([
+        const [b, header, ind, dr, pn] = await Promise.all([
           api.bars(t),
-          api.symbols(`?q=${t}`),
+          api.symbol(t).catch(() => null),
           api.indicators(t, "sma:20").catch(() => ({})),
           api.drawings(t).catch(() => []),
           api.pageNote(t).catch(() => ({ body: "" })),
         ]);
         if (cancelled) return;
         setBars(b);
-        setRow(symbols.find((s) => s.ticker === t) || null);
+        setRow(header);
         const indRaw = (ind as Record<string, unknown>)["sma:20"];
         setSma(Array.isArray(indRaw) ? (indRaw as (number | null)[]) : []);
         setDrawings((dr as Drawing[]) || []);
@@ -75,7 +76,7 @@ export function SymbolPage() {
           <h1 style={{ fontFamily: "var(--font-num)", fontSize: "var(--fs-xl)", margin: 0 }}>{t}</h1>
           <PriceCell value={row?.last ?? bars.at(-1)?.close ?? null} />
           <ChangeCell value={row?.change ?? null} />
-          <span style={{ color: "var(--text-muted)" }}>{row?.board}</span>
+          <span style={{ color: "var(--text-muted)" }}>{row?.board ? displayBoard(row.board) : ""}</span>
         </div>
         {err ? <Banner kind="error">{err}</Banner> : null}
         {bars.length === 0 ? (

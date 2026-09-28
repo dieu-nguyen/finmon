@@ -25,6 +25,13 @@ class SymbolRow(BaseModel):
     watchlist: bool = False
 
 
+class SymbolPage(BaseModel):
+    items: list[SymbolRow]
+    total: int
+    limit: int
+    offset: int
+
+
 class BarOut(BaseModel):
     date: date
     open: int

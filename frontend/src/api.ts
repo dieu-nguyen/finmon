@@ -16,10 +16,18 @@ export type SymbolRow = {
   name: string;
   board: string;
   type: string;
+  listed: boolean;
   last: number | null;
   change: number | null;
   volume: number | null;
   watchlist: boolean;
+};
+
+export type SymbolPage = {
+  items: SymbolRow[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 export type Bar = {
@@ -49,11 +57,25 @@ export type Alert = {
   last_fired_at: string | null;
 };
 
+function withRange(path: string, range?: { from?: string; to?: string }) {
+  const params = new URLSearchParams();
+  if (range?.from) params.set("from", range.from);
+  if (range?.to) params.set("to", range.to);
+  const q = params.toString();
+  return q ? `${path}?${q}` : path;
+}
+
 export const api = {
   health: () => req<Health>("/api/health"),
-  symbols: (q = "") => req<SymbolRow[]>(`/api/symbols${q}`),
-  bars: (ticker: string) => req<Bar[]>(`/api/symbols/${ticker}/bars`),
-  indicators: (ticker: string, names: string) => req<Record<string, unknown>>(`/api/symbols/${ticker}/indicators?names=${encodeURIComponent(names)}`),
+  symbols: (q = "", init?: RequestInit) => req<SymbolPage>(`/api/symbols${q}`, init),
+  symbol: (ticker: string) => req<SymbolRow>(`/api/symbols/${encodeURIComponent(ticker)}`),
+  bars: (ticker: string, range?: { from?: string; to?: string }) => req<Bar[]>(withRange(`/api/symbols/${ticker}/bars`, range)),
+  indicators: (ticker: string, names: string, range?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams({ names });
+    if (range?.from) params.set("from", range.from);
+    if (range?.to) params.set("to", range.to);
+    return req<Record<string, unknown>>(`/api/symbols/${ticker}/indicators?${params.toString()}`);
+  },
   pin: (ticker: string) => req<SymbolRow>(`/api/watchlist/${ticker}`, { method: "POST" }),
   unpin: (ticker: string) => req(`/api/watchlist/${ticker}`, { method: "DELETE" }),
   drawings: (ticker: string) => req<unknown[]>(`/api/symbols/${ticker}/drawings`),

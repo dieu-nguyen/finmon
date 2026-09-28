@@ -106,6 +106,8 @@ def classify_type(raw: dict[str, Any]) -> str:
         return "etf"
     if "index" in blob or "chỉ số" in blob:
         return "index"
+    if board_from(raw) == "HCX" or "trái phiếu" in blob:
+        return "bond"
     return "stock"
 
 
