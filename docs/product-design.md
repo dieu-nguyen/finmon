@@ -4,20 +4,27 @@ Vietnam equity monitor (HOSE, HNX, UPCOM). Prices from **DNSE OpenAPI**. Company
 
 Audience: one operator (you). Single-user is enough for v1.
 
+## Where to read
+
+- This file is the current product.
+- Build specs: `docs/backfill-workflow.md`, `docs/market-list.md`, `docs/pattern-compare.md`.
+- Decisions: 0001. History backfill is its own process (`docs/adr/0001-backfill-process.md`); 0002. The market screen is one page of one type (`docs/adr/0002-market-list-page.md`); 0003. Indicators are calculated when the chart asks (`docs/adr/0003-indicators-on-read.md`); 0004. HCX names are corporate bonds (`docs/adr/0004-hcx-bonds.md`); 0005. Pattern compare runs after the official bar (`docs/adr/0005-pattern-compare-job.md`).
+- `docs/design-system.md` and `docs/market-api-research.md` stay supporting material.
+
 ---
 
 ## 1. Purpose
 
-See the market, mark your own thinking on it, get told when price hits a level you chose, and once a day (and once a week) have the system hunt for names that match **your** patterns.
+See the market, mark your own thinking on it, get told when price hits a level you chose, and after the official daily bar is stored, see which names look like a reference you picked.
 
 Success looks like:
 
 - After the session, you can open any listed stock or ETF, see a daily chart, and it matches DNSE history.
 - You can draw and write on that chart, plus keep a longer note beside it; those survive refresh.
-- When last price crosses an alert you set, Telegram gets a message the same polling cycle (target: within one 30-minute job in session, or at EOD if you only run EOD).
-- Overnight, a job ranks names whose last 90 daily bars match a pattern you defined; you open a short list, not 1,500 charts.
+- When last price crosses an alert you set, Telegram gets a message on that 30-minute poll, while the API is up in session.
+- After the backfill pass that writes the official bar, a job scores enabled look-alike patterns. You open a short hit list, not the catalog.
 
-The first three bullets are **v1**. The scan is **v1.1** (same product, next slice).
+The first three bullets are **v1**. Pattern compare is **v1.1** (accepted, not built yet).
 
 Out of scope for this product:
 
@@ -30,19 +37,26 @@ Out of scope for this product:
 
 ## 2. What you see (product surfaces)
 
+UX is the first principle for every screen: performance and convenience. First paint is a small set. Search and filters narrow the request. Stocks, fund certificates, and indices stay in separate lists.
+
 ### 2.1 Market
 
-- Boards: HOSE, HNX, UPCOM, plus indices (at least VNINDEX, VN30) and ETFs that DNSE instruments expose.
-- Catalog: every symbol as a row (code, name, board, last, change, volume). Cheap fields only. Opening a row loads the chart.
-- Watchlist / “hot” list: symbols you pin. These refresh on the session poll (every 30 minutes while the market is open, ICT). The rest of the catalog refreshes at **end of day**.
-- Filters: board, watchlist, search by ticker/name.
+Three lists: **Stocks | Funds | Indices**. Default is Stocks. Funds are `type=etf`. Indices are `type=index`. Bonds are `type=bond` and are not a market segment in this version. HCX stays the board code on those rows. It is not a stock board.
+
+On Stocks, the board control is All, HOSE, HNX, UPCOM. UPCOM includes a stored board of UPX.
+
+The table is 50 rows, ordered by ticker. Search replaces the page (cap 50): exact ticker, then ticker prefix, then name. A slower wider response must not replace a narrower one. The watchlist checkbox filters inside the current segment. Opening a row loads the chart.
+
+Detail: `docs/market-list.md`.
 
 ### 2.2 Chart (daily)
 
-- Daily OHLCV candlesticks. Default lookback 1 year; you can request more if DNSE returns it.
-- Local overlays you turn on: SMA, EMA, RSI, MACD, Bollinger, ATR, volume MA. Parameters editable. Not fetched from a TA vendor.
+- Candles come from `daily_bar` only. Default lookback is about one year.
+- Indicators are calculated when the chart asks, on the same from/to window as the candles, and they are not stored: sma, ema, rsi, macd, bollinger, atr, volume_ma. The chart today shows SMA 20. The others exist on the API. Parameters stay editable. Not fetched from a TA vendor.
 - Price scale: **đồng**, one convention everywhere.
 - Vietnam session context on the axis (calendar dates, skip non-trading days). Show reference / ceiling / floor when DNSE provides them on the quote.
+
+Detail for the window alignment: `docs/market-list.md`.
 
 ### 2.3 Your analytics
 
@@ -58,9 +72,9 @@ Drawings and chart notes must re-attach after new bars arrive (anchor = trading 
 
 ### 2.4 Company panel (on demand)
 
-Loaded when you open a symbol, not on the catalog poll.
+Loaded when you open a symbol, not on the market list.
 
-From Vnstock: company info, shareholders/officers as available, financial statements (income, balance, cash flow), ratios (P/E, P/B, ROE, …). Failure of Vnstock must not blank the chart.
+One JSON document per ticker from Vnstock (profile, statements, ratios), cached 24 hours. No statement warehouse. Failure of Vnstock must not blank the chart.
 
 ### 2.5 Alerts
 
@@ -73,56 +87,47 @@ v1 conditions:
 
 Delivery: **Telegram** (bot message: ticker, board, last, condition, time ICT).
 
-Evaluation: same cadence as hot-list poll in session; plus a full pass at EOD so nothing is missed if the 30-minute job skipped a name.
+Evaluation: the 30-minute watchlist poll, while the API is up in session, including the 15:00 run. There is no second pass at 16:30.
 
-### 2.6 Pattern desk (autonomous scan)
+Pattern compare sends its own Telegram message from the scan job. That is not a price alert.
 
-You do **not** scan the UI yourself. Two scheduled jobs:
+### 2.6 Pattern compare (v1.1, not built yet)
 
-- **Daily** after EOD bars are stored (evening ICT, after DNSE daily OHLC is complete).
-- **Weekly** (e.g. Sunday evening ICT) with the same engine, extra “weekly” pattern set if you tagged patterns as weekly.
+Accepted. The screen does not score the catalog.
 
-Inputs: last **90 trading days** of daily close (and OHLC if the pattern asks for it) for the universe you enable (default: all three boards + ETFs that have 90 bars).
+After the backfill pass that writes the official daily bar, a job scores enabled look-alike patterns. It does not run when the page opens, and not on the 30-minute poll.
 
-Outputs: a **scan result** list: symbol, pattern name, score, as-of date. You open it like a watchlist. No auto-alert unless you also attach a pattern to Telegram (v1.1). v1 Telegram is price alerts only.
+Look-alike uses the last 90 trading-day closes, min-max normalized, Pearson correlation, floor 0.85, top 20. The reference ticker is excluded.
+
+Universe: listed stock and ETF on HOSE, HNX, and UPCOM (stored UPX counts as UPCOM). Skip bonds, indices, HCX, flat windows, and windows whose newest bar is still `source=quote`.
+
+The screen is **Scans**: a short hit list. A hit opens two charts side by side for those 90 sessions. A successful run sends one Telegram message. A failed run keeps the previous hits and sends no hit-list message.
+
+Rules, shapes, and a weekly schedule are reserved. They are not in this slice.
+
+Detail: `docs/pattern-compare.md`.
 
 ---
 
-## 3. Pattern types you can define
+## 3. Pattern types
 
-All patterns are **your** definitions stored in the app. The scanner only runs what you enabled.
+Look-alike is the method the job scores. You enable the patterns you want. Rule patterns, shape patterns, and a weekly schedule stay reserved.
 
-### 3.1 Rule patterns (v1)
+### 3.1 Look-alike
 
-Boolean rules on the 90D (or shorter) daily series, for example:
+Pick a reference symbol. Compare its last 90 daily closes to other listed stocks and ETFs. The score is Pearson correlation after min-max normalization. Keep the top 20 at or above 0.85. The reference is not in the list. This is not fundamental similarity. The screen and the job are in section 2.6.
 
-- Close today vs SMA(20) / SMA(50)
-- 90D high/low break
-- Consecutive down/up days
-- Range compression (e.g. 20D ATR vs 90D ATR)
-- Volume today vs 20D average
+### 3.2 Reserved
 
-You compose them in a form (AND of clauses). No Python in v1.
+- **Rule**: an AND of clauses on the daily series (close vs a moving average, range, volume). A later job may compute those indicators inside the run and store matches only, not every indicator point.
+- **Shape**: a template series of length ≤ 90, drawn or taken from a date range on a symbol.
+- **Weekly** schedule.
 
-### 3.2 Shape patterns (v1)
-
-A shape is a **template series** of length ≤ 90:
-
-- Drawn by you on a chart (normalized polyline), or
-- Taken from a date range on a symbol (“use HPG 2026-03-01 → 2026-06-01 as template”).
-
-Match: compare the last N daily **closes**, min-max (or z-score) normalized, with **Pearson correlation** or **1 − cosine distance**. You set a minimum score (e.g. 0.85). This is “historical 90D data forming a shape.”
-
-### 3.3 Look-alike (v1)
-
-“Stocks that look like this stock”: pick a reference symbol, compare last 90D normalized closes to every other name, return top K (e.g. 20) above a score floor. Same distance as shape patterns. This is not fundamental similarity.
-
-### 3.4 Later (not v1)
+### 3.3 Later (not this product yet)
 
 - DTW / more shape families (head-and-shoulders detector as a named built-in)
 - Intraday patterns
 - News/sentiment
-- Alert-on-scan (Telegram when a pattern hits)
 
 ---
 
@@ -130,19 +135,23 @@ Match: compare the last N daily **closes**, min-max (or z-score) normalized, wit
 
 | Data | Source | When |
 | --- | --- | --- |
- | Instrument list | DNSE `GET /instruments` | Daily |
-| Daily OHLCV all symbols | DNSE `GET /price/ohlc` | After close, batched, respect per-endpoint limits (OHLC 50,000/hour, 100,000/day) |
-| Hot-list last price | DNSE latest trade/quote or a 1D OHLC close | Every 30 minutes **09:00–15:00 ICT** on trading days |
-| Indices | DNSE index OHLC / market index as documented | Same as prices |
-| Company / statements / ratios | Vnstock | On chart open; cache (e.g. 24h for profile, until next quarter for statements) |
-| Indicators | Local from stored daily bars | On read |
-| Telegram | Bot API | When an alert fires |
+| Instrument list and daily OHLCV | DNSE, written by the backfill process | `start.sh` launches that process: catch-up, then weekdays at 16:30 ICT. Writes `daily_bar.source=dnse` |
+| Watchlist last price and today's forming candle | DNSE quote, 30-minute poll inside the API | Weekdays in session. Updates `quote_snapshot` and today's candle `source=quote` until the after-close backfill replaces that bar |
+| Indices | Same writers as prices | Same as prices |
+| Company | Vnstock | On demand. One JSON document per ticker, 24h cache. No statement warehouse |
+| Indicators | Local from `daily_bar` | When the chart asks, on that candle window. Not stored |
+| Price-alert Telegram | Bot API | When an alert fires on the 30-minute poll |
+| Pattern Telegram | Bot API | One message from a successful look-alike run |
 
-DNSE WebSocket is **not** used in v1.
+The API has no 16:30 history job.
 
-Fallback: none in v1. If DNSE fails, jobs retry with backoff and the UI shows stale-as-of. Do not silently mix CafeF/VPS into the same bars.
+Detail: `docs/backfill-workflow.md`.
 
-Vnstock rate limit (community **60 req/min**): company panel is on-demand and cached. Scanner does **not** call Vnstock.
+DNSE WebSocket is **not** used.
+
+Fallback: none. If DNSE fails, jobs retry with backoff and the UI shows stale-as-of. Do not silently mix CafeF/VPS into the same bars.
+
+Vnstock rate limit (community **60 req/min**): the company panel is on demand and cached. The scanner does not call Vnstock.
 
 ---
 
@@ -151,34 +160,36 @@ Vnstock rate limit (community **60 req/min**): company panel is on-demand and ca
 Small units, each with one job:
 
 ```
-[DNSE client] --> [ingest jobs] --> [market store]
-[Vnstock client] --> [company cache]     ^
-                                         |
-[indicator lib] reads market store
+[DNSE client] --> [backfill process] --> [market store]
+[DNSE client] --> [30-min quote poll] --> [market store]
+[Vnstock client] --> [company cache]        ^
+                                            |
+[indicator lib] reads market store when the chart asks
 [annotation store]  drawings / notes
 [alert engine] reads market store + alert rules --> [Telegram]
-[pattern engine] reads market store + pattern defs --> [scan results]
+[pattern job] after the official bar --> [scan hits] --> [Telegram]
 [web app] reads all stores; writes annotations, alerts, patterns, watchlist
 ```
 
 - **DNSE client**: auth (API key/secret), REST only, rate-limit headers, paging.
 - **Vnstock client**: isolated so a Vnstock outage cannot block ingest.
+- **Backfill process**: started by `start.sh`. Catch-up, then weekdays at 16:30 ICT. Official bars (`source=dnse`) only. Not inside the API.
 - **Market store**: symbols, daily bars, last quote snapshot, ingest watermarks.
 - **Annotation store**: drawings, chart notes, page notes.
-- **Alert engine**: load rules, compare to last price, write delivery log, call Telegram once per fire.
-- **Pattern engine**: no network; numpy/pandas on 90D windows; write ranked hits.
-- **Scheduler**: ICT calendar (skip weekends/VN holidays when we have a holiday list; until then skip Sat/Sun only).
-- **Web app**: market table, chart+draw (Apache ECharts), notes, alerts CRUD, pattern CRUD, scan results.
+- **Alert engine**: load rules, compare to last price, write delivery log, call Telegram once per fire. The 30-minute poll only.
+- **Pattern job**: no DNSE call. Runs after the backfill pass that writes the official bar. Look-alike on 90 closes. Writes hits. One Telegram message when the run succeeds.
+- **API scheduler**: 30-minute watchlist poll, weekdays in session (ICT), including 15:00. No 16:30 history job. Skip Saturday and Sunday; skip VN holidays when a holiday list exists.
+- **Web app**: market list, chart and drawings (Apache ECharts), notes, price alerts, Scans.
 - **Store**: MySQL 8.
 
-Compute indicators in the app (or a pure function module), not in SQL, so definitions stay testable.
+Compute chart indicators in the app (or a pure function module), not in SQL, and not as stored series.
 
 ---
 
 ## 6. Data model (logical)
 
-- `symbol`: ticker, name, board, type (stock/etf/index/other), listed flag
-- `daily_bar`: ticker, date, open, high, low, close, volume, value, source=`dnse`
+- `symbol`: ticker, name, board, type (stock/etf/index/bond), listed flag. HCX rows are `type=bond`. The board code stays HCX.
+- `daily_bar`: ticker, date, open, high, low, close, volume, value. `source=dnse` is the official bar. `source=quote` is today's forming candle until the after-close backfill replaces it.
 - `quote_snapshot`: ticker, last, ref, ceiling, floor, time, source
 - `watchlist_item`: ticker, position
 - `drawing`: id, ticker, tool, points[] (date, price), style, created_at
@@ -186,7 +197,7 @@ Compute indicators in the app (or a pure function module), not in SQL, so defini
 - `page_note`: ticker, body, updated_at (+ `page_note_revision` optional)
 - `price_alert`: ticker, op (gte/lte), price, once|repeat, enabled, last_fired_at
 - `alert_delivery`: alert_id, sent_at, telegram_ok, payload
-- `pattern_def`: name, kind (rule|shape|lookalike), spec JSON, schedule (daily|weekly|both), enabled
+- `pattern_def`: name, kind (`lookalike` now; `rule` and `shape` reserved), spec JSON, schedule (`daily` now; `weekly` and `both` reserved), enabled
 - `scan_run`: id, started_at, finished_at, status
 - `scan_hit`: run_id, ticker, pattern_id, score, window_start, window_end
 
@@ -197,21 +208,20 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 ## 7. Error handling
 
 - DNSE 429: honor `X-RateLimit-*`, sleep, resume; do not drop the day’s ingest without a failed `scan_run` / ingest watermark.
-- DNSE missing symbol: keep catalog row, chart shows “no bars”.
+- DNSE missing symbol: keep the symbol row, chart shows “no bars”.
 - Vnstock error: company panel “unavailable”; chart still works.
-- Telegram fail: keep alert unsent, retry next cycle; do not flip `last_fired_at` until send succeeds (for `once` alerts).
-- Pattern job timeout: mark run failed, keep previous hits visible with as-of date.
+- Telegram fail on a price alert: keep the alert unsent, retry next cycle; do not flip `last_fired_at` until send succeeds (for `once` alerts).
+- Pattern job failure: mark that run failed, keep the previous hits visible with their as-of date, and send no hit-list message.
 
 ---
 
 ## 8. Testing
 
 - DNSE client: recorded fixtures (no live keys in CI).
-- Indicator functions: golden values on a fixed 90-bar series.
+- Indicator functions: golden values on a fixed series. The series returned with a chart matches that candle window.
 - Alert engine: price 100, alert ≥ 100 fires; 99.99 does not; `once` does not double-send.
-- Shape match: two identical normalized series score ~1; reversed series below threshold.
-- Look-alike: reference vs itself is rank 1.
-- UI: chart load, save drawing, save page note, create alert (browser or component tests).
+- Look-alike: two identical normalized series score about 1. The reference ticker is not in its own hits. A window whose newest bar is `source=quote` is not scored.
+- UI: a market page of 50, chart load, save drawing, save page note, create alert (browser or component tests).
 
 ---
 
@@ -219,35 +229,38 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 
 **v1 — view + think + price ping**
 
-1. DNSE ingest: instruments + daily bars + 30-minute hot list  
-2. Market table + daily chart + local indicators  
-3. Drawings, chart notes, page notes  
-4. Price alerts → Telegram  
-5. Company panel (Vnstock, cached)
+1. History backfill as its own process, plus the 30-minute watchlist poll and the quote candle
+2. Market list (Stocks | Funds | Indices, 50 rows) and a daily chart with indicators on that window
+3. Drawings, chart notes, page notes
+4. Price alerts → Telegram
+5. Company tab (on demand, 24h cache)
 
-**v1.1 — autonomous scan**
+**v1.1 — look-alike (accepted, not built yet)**
 
-6. Rule patterns  
-7. Shape templates + look-alike (90D)  
-8. Daily and weekly jobs + results UI  
+6. Job after the official bar, Scans hit list, side-by-side charts for those 90 sessions, one Telegram message
 
-**Not before v1.1 is used in anger**
+**Reserved**
 
-- DNSE WebSocket  
-- Second price vendor fallback  
-- Alert on pattern hit  
-- Adjusted-price series  
+- Rule patterns, shape templates, weekly schedule
+- A bond browser
+
+**Not in this product**
+
+- DNSE WebSocket
+- Second price vendor
+- Adjusted-price series
 
 ---
 
 ## 10. Defaults (locked unless you change them)
 
 - Timezone: `Asia/Ho_Chi_Minh`
-- Hot-list poll: 30 minutes in session; catalog EOD
-- Indicators: daily only, computed locally
-- Pattern window: 90 trading days
-- Similarity: Pearson on min-max normalized closes
-- Alerts: Telegram only
+- Prices: backfill process (catch-up, then weekdays at 16:30 ICT). API watchlist poll every 30 minutes in session. No API history job at 16:30.
+- Official bars: `source=dnse`. Session candle: `source=quote` until that after-close pass.
+- Market list: one segment, 50 rows, ordered by ticker. Search replaces the page.
+- Indicators: daily only, computed on the chart's from/to window, not stored. The chart shows SMA 20.
+- Pattern window: 90 trading-day closes, Pearson on min-max, floor 0.85, top 20, reference excluded
+- Alerts: Telegram on last-price rules. Pattern Telegram is a separate message from the scan job.
 - Single user, no public market data API
 - Language of UI: English labels OK; tickers and company names as returned (Vietnamese)
 
@@ -255,4 +268,4 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 
 ## 11. What this document is not
 
-It is not an implementation plan (file list, tickets, DNSE register steps). After you accept this product design, the next artifact is an implementation plan for **v1 only**.
+This file is the product as it stands. The slice docs are the build specs. The ADRs are the decision records. Both are listed under Where to read.
