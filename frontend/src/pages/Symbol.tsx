@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { api, type Bar, type SymbolRow } from "../api";
 import { displayBoard } from "./Market";
 import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Tabs, Toast } from "../design-system";
+import { CompanyPanel } from "./CompanyPanel";
 import { DailyChart } from "../chart/DailyChart";
 import type { Drawing, DrawingTool } from "../chart/drawings";
 
@@ -16,7 +17,7 @@ export function SymbolPage() {
   const [tab, setTab] = useState("Note");
   const [note, setNote] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  const [company, setCompany] = useState<string | null>(null);
+  const [company, setCompany] = useState<Record<string, unknown> | null | undefined>(undefined);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [tool, setTool] = useState<DrawingTool>("pan");
   const [op, setOp] = useState("gte");
@@ -53,10 +54,19 @@ export function SymbolPage() {
 
   useEffect(() => {
     if (tab !== "Company") return;
+    let cancelled = false;
+    setCompany(undefined);
     api
       .company(t)
-      .then((p) => setCompany(JSON.stringify(p, null, 2)))
-      .catch(() => setCompany(null));
+      .then((p) => {
+        if (!cancelled) setCompany(p);
+      })
+      .catch(() => {
+        if (!cancelled) setCompany(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [tab, t]);
 
   const persistDrawings = (d: Drawing[]) => {
@@ -115,7 +125,7 @@ export function SymbolPage() {
             </Button>
           </div>
         ) : null}
-        {tab === "Company" ? company ? <pre style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>{company}</pre> : <EmptyState text="Company data unavailable" /> : null}
+        {tab === "Company" ? (company ? <CompanyPanel payload={company} /> : company === null ? <EmptyState text="Company data unavailable" /> : null) : null}
         {tab === "Alert" ? (
           <form
             style={{ display: "grid", gap: 8, marginTop: 12 }}
