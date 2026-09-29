@@ -1,0 +1,46 @@
+Design desktop mockups for finmon, a private Vietnam equity monitor for one person. It is not a broker, not a marketing site, and not a phone app. The person uses it to scan the market, open a daily chart, write notes, set a price alert, and later compare a stock with names that move like it.
+
+Draw dark UI only, at 1440×900 or wider. Minimum width is 1200px. English labels. Tickers and Vietnamese company names are data. Prices are integer đồng, grouped like 92.600, with a signed percent change. Up is green, down is red. Color is for data and status, not decoration. No hero, no illustration, no gradients used as decoration, no second theme.
+
+The app should feel like a calm, precise market terminal: clear hierarchy, aligned numbers, enough padding that columns do not touch, and one strong price on the symbol screen. It should not look like an unstyled HTML table. Controls are 32px tall, corners slightly rounded, spacing on a 4px scale. UI text is a humanist sans (IBM Plex Sans). Tickers and prices are mono (IBM Plex Mono). Page background is near-black (#0e1116). Raised panels are #161b22 with a hairline border #2a3340. Body text #e6edf3, labels #8b9bb4. Accent #6ea8fe. Up #3dd68c. Down #f87171.
+
+Overall chrome, on every screen:
+- Top bar, 48px: the word “finmon” on the left; on the right, “as of 14:32 ICT” and a small status pill (ok / stale / error).
+- Left nav, about 220px: Market, Alerts, Scans. The active item has a blue left bar and a slightly lighter fill.
+- Main area padded 16px.
+
+Screen 1 — Market (default, Stocks selected)
+- Title “Market”.
+- Segment control: Stocks | Funds | Indices. Stocks is active.
+- On Stocks only, a board select: All, HOSE, HNX, UPCOM.
+- Search field, placeholder “Search ticker or name”.
+- A “Watchlist” checkbox.
+- A table of 50 rows, columns: Ticker, Name, Board, Last, Change, Volume, and a small pin icon (not a wide “Pin to watchlist” button). Ticker mono. Last and Change right-aligned; Change colored green or red. Volume with thousands separators, right-aligned. Header sticky. Rows 36px, hover state, comfortable horizontal padding.
+- Footer: “1–50 of 1,801” and Previous / Next.
+- Show one realistic row such as VCB, Vietcombank, HOSE, 92.600, +1,2%, volume 1.250.000.
+- If the search is “VHM” and nothing on the current board matches, one line says the matches are outside the current filter, and the table shows only those matches. Include this as a note or a second frame if the tool allows.
+
+Screen 2 — Symbol (chart), ticker VCB
+- Header: VCB in mono, last price large, change beside it, board HOSE quieter.
+- Chart in a raised frame. Daily candlesticks, green up and red down, volume underneath, a range slider. About one year.
+- Toolbar of compact 32px tools with distinct marks: pan, horizontal line, trend, rectangle, fib, text, pin, delete. An “SMA 20” chip that is on.
+- Right rail, 360px, tabs: Note | Company | Alert. Note is a textarea and “Save note”.
+
+Screen 3 — Company
+- Overview: Name, Short name, Exchange, Industry, Listed shares, Market cap, Free float, Foreign ownership, State ownership, and a short Business paragraph.
+- Four compact tables: Income, Balance sheet, Cash flow, Ratios. Metrics down, years across. Unit labeled once: đồng. Rows: Revenue, Gross profit, Operating profit, Net profit; Total assets, Liabilities, Equity; Operating cash flow, Capex, Ending cash; P/E, P/B, ROE, ROA, Profit margin, Debt/equity.
+- No raw JSON.
+
+Screen 4 — Scans
+- Form with labels: Name, Reference ticker, Minimum score 0.85, Top K 20, Enabled, button “Save”.
+- Saved pattern chips, one selected.
+- Header: reference ticker and as-of date.
+- Hit list: Ticker, Name, Score, As of.
+
+Screen 5 — Compare
+- Two daily charts side by side for the same 90 sessions. Reference VCB on the left, a match on the right. Each chart has its own price scale in đồng. Header shows both tickers and score 0.91.
+
+Screen 6 — Alerts
+- Compact list: ticker, ≥ or ≤, price, once or repeat, enabled, delete. Same table padding as Market.
+
+Same chrome and tokens on every screen. Do not invent order entry, portfolios, news, or a light theme.

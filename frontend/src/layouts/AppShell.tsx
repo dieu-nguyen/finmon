@@ -1,7 +1,14 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { AsOf, Badge } from "../design-system";
+import { AsOf } from "../design-system";
+import { NavIcon } from "../design-system/icons";
 import { api, type Health } from "../api";
+
+const NAV: { to: string; label: string; icon: "market" | "alerts" | "scans" }[] = [
+  { to: "/market", label: "Market", icon: "market" },
+  { to: "/alerts", label: "Alerts", icon: "alerts" },
+  { to: "/scans", label: "Scans", icon: "scans" },
+];
 
 export function AppShell() {
   const [health, setHealth] = useState<Health | null>(null);
@@ -11,37 +18,34 @@ export function AppShell() {
   const status = health?.status ?? "error";
   const kind = status === "ok" ? "up" : status === "stale" || status === "unconfigured" ? "warn" : "down";
   const asOf = health?.as_of ? health.as_of.replace("T", " ").slice(0, 16) : null;
+  const path = useLocation().pathname;
   return (
-    <div style={{ display: "grid", gridTemplateRows: "48px 1fr", minHeight: "100%" }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 var(--space-4)", borderBottom: "1px solid var(--border)", background: "var(--bg-elev)", height: 48 }}>
-        <strong style={{ fontSize: "var(--fs-lg)", fontWeight: 500 }}>finmon</strong>
-        <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center" }}>
+    <div className="app">
+      <header className="app-header">
+        <strong className="wordmark">finmon</strong>
+        <div className="header-meta">
           <AsOf time={asOf} />
-          <Badge kind={kind}>{status}</Badge>
+          <span className={`status-pill ${kind}`}>
+            <span className="status-dot" />
+            {status}
+          </span>
         </div>
       </header>
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", minHeight: 0 }}>
-        <nav style={{ borderRight: "1px solid var(--border)", padding: "var(--space-3)" }}>
-          {["/market", "/alerts"].map((to) => (
+      <div className="app-body">
+        <nav className="nav">
+          <div className="nav-kicker">Terminal</div>
+          {NAV.map((item) => (
             <NavLink
-              key={to}
-              to={to}
-              style={({ isActive }) => ({
-                display: "block",
-                height: 32,
-                lineHeight: "32px",
-                paddingLeft: "var(--space-3)",
-                textDecoration: "none",
-                color: "var(--text)",
-                background: isActive ? "var(--bg-selected)" : "transparent",
-                borderLeft: isActive ? "2px solid var(--accent)" : "2px solid transparent",
-              })}
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => (isActive || (item.to === "/market" && path.startsWith("/symbol")) ? "nav-link active" : "nav-link")}
             >
-              {to === "/market" ? "Market" : "Alerts"}
+              <NavIcon name={item.icon} />
+              {item.label}
             </NavLink>
           ))}
         </nav>
-        <main style={{ padding: "var(--space-4)", minWidth: 0 }}>
+        <main className="shell-main">
           <Outlet />
         </main>
       </div>

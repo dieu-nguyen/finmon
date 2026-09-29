@@ -75,7 +75,7 @@ def test_symbols_api_seeded(client, db):
     db.commit()
     resp = client.get("/api/symbols")
     assert resp.status_code == 200
-    row = resp.json()[0]
+    row = resp.json()["items"][0]
     assert row["ticker"] == "VCB"
     assert row["last"] == 91000
     pin = client.post("/api/watchlist/VCB")

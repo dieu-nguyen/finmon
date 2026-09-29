@@ -14,6 +14,7 @@ from app.clients.dnse import DnseClient, OhlcvBar
 from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.jobs.ingest import upsert_instrument
+from app.jobs.pattern_scan import run_pattern_scan
 from app.jobs.rate_limit import BackfillInterrupted, RateLimiter
 from app.models import BarSync, DailyBar, Symbol
 
@@ -24,6 +25,12 @@ EXIT_LOCK = 2
 EXIT_FATAL = 3
 EXIT_INTERRUPT = 130
 _MAX_WINDOWS = 80
+
+
+def allows_official_bar(now: datetime) -> bool:
+    """True when this pass may include today's official bar, including a weekend catch-up."""
+    local = now.astimezone(ICT) if now.tzinfo else now.replace(tzinfo=ICT)
+    return not (local.weekday() < 5 and (local.hour, local.minute) < (16, 30))
 
 
 def target_end(now: datetime) -> date:
@@ -68,12 +75,29 @@ def _caught_up(sync: BarSync, target: date) -> bool:
 
 
 def _lock(db: Session) -> bool:
-    got = db.execute(text("SELECT GET_LOCK(:name, 0)"), {"name": LOCK_NAME}).scalar()
-    return int(got or 0) == 1
+    """Hold the advisory lock on its own connection so session commits cannot drop it."""
+    conn = db.get_bind().connect()
+    try:
+        got = conn.execute(text("SELECT GET_LOCK(:name, 0)"), {"name": LOCK_NAME}).scalar()
+        conn.commit()
+    except Exception:
+        conn.close()
+        raise
+    if int(got or 0) != 1:
+        conn.close()
+        return False
+    db.info["backfill_lock_conn"] = conn
+    return True
 
 
 def _unlock(db: Session) -> None:
-    db.execute(text("SELECT RELEASE_LOCK(:name)"), {"name": LOCK_NAME})
+    conn = db.info.pop("backfill_lock_conn", None)
+    if conn is None:
+        return
+    try:
+        conn.execute(text("SELECT RELEASE_LOCK(:name)"), {"name": LOCK_NAME})
+    finally:
+        conn.close()
 
 
 def _bounds(db: Session, ticker: str, target: date) -> tuple[date | None, date | None]:
@@ -94,31 +118,48 @@ def _touch(sync: BarSync, db: Session, ticker: str, target: date) -> None:
     sync.last_error = ""
 
 
+def _apply_bar(row: DailyBar, bar: OhlcvBar) -> None:
+    row.open = bar.open
+    row.high = bar.high
+    row.low = bar.low
+    row.close = bar.close
+    row.volume = bar.volume
+    row.value = bar.value
+    row.source = "dnse"
+
+
 def _upsert_bars(db: Session, bars: list[OhlcvBar]) -> None:
+    """Last bar for a date wins. SessionLocal does not autoflush, so a select misses rows added earlier in this call."""
+    pending: dict[tuple[str, date], DailyBar] = {}
     for bar in bars:
+        key = (bar.ticker, bar.date)
         existing = db.scalar(select(DailyBar).where(DailyBar.ticker == bar.ticker, DailyBar.date == bar.date))
-        if existing:
-            existing.open = bar.open
-            existing.high = bar.high
-            existing.low = bar.low
-            existing.close = bar.close
-            existing.volume = bar.volume
-            existing.value = bar.value
-            existing.source = "dnse"
-        else:
-            db.add(
-                DailyBar(
-                    ticker=bar.ticker,
-                    date=bar.date,
-                    open=bar.open,
-                    high=bar.high,
-                    low=bar.low,
-                    close=bar.close,
-                    volume=bar.volume,
-                    value=bar.value,
-                    source="dnse",
-                )
-            )
+        if existing is not None:
+            _apply_bar(existing, bar)
+            continue
+        staged = pending.get(key)
+        if staged is not None:
+            _apply_bar(staged, bar)
+            continue
+        staged = DailyBar(
+            ticker=bar.ticker,
+            date=bar.date,
+            open=bar.open,
+            high=bar.high,
+            low=bar.low,
+            close=bar.close,
+            volume=bar.volume,
+            value=bar.value,
+            source="dnse",
+        )
+        db.add(staged)
+        pending[key] = staged
+
+
+def _skip_without_ohlc(sym: Symbol | None) -> bool:
+    if sym is None:
+        return False
+    return sym.type in {"bond", "futures"} or sym.board in {"HCX", "DVX"}
 
 
 def _fetch_ohlc(
@@ -241,14 +282,16 @@ def run_once(
                 print("DNSE rejected the API key")
                 return EXIT_FATAL
             raise
-        catalog = [i for i in instruments if i.type in {"stock", "etf", "index"} and i.listed]
+        stored_types = {"stock", "etf", "index", "warrant", "bond", "futures"}
+        catalog = [i for i in instruments if i.type in stored_types and i.listed]
         deduped: dict[str, object] = {}
         for inst in catalog:
             deduped.setdefault(inst.ticker, inst)
         catalog = list(deduped.values())
-        wanted = catalog
+        ohlc_names = [i for i in catalog if i.type in {"stock", "etf", "index", "warrant"}]
+        wanted = ohlc_names
         if ticker:
-            wanted = [i for i in catalog if i.ticker == ticker.upper()]
+            wanted = [i for i in ohlc_names if i.ticker == ticker.upper()]
             if not wanted:
                 print(f"{ticker.upper()} is not in the DNSE instrument list")
                 return EXIT_FATAL
@@ -263,7 +306,11 @@ def run_once(
         db.commit()
 
         rows = list(db.scalars(select(BarSync).order_by(BarSync.ticker)).all())
-        work = [row for row in rows if (only is None or row.ticker == only) and not _caught_up(row, target)]
+        work = [
+            row
+            for row in rows
+            if (only is None or row.ticker == only) and row.status != "skipped" and not _caught_up(row, target)
+        ]
         work.sort(key=lambda row: (0 if row.status in {"partial", "error"} else 1, row.ticker))
 
         for row in work:
@@ -271,6 +318,12 @@ def run_once(
             if stop_fn():
                 print(f"stopped at {current}")
                 return EXIT_INTERRUPT
+            if _skip_without_ohlc(db.get(Symbol, row.ticker)):
+                row.status = "skipped"
+                row.last_error = ""
+                row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                db.commit()
+                continue
             try:
                 _sync_one(db, client, row, target, stop_fn=stop_fn)
                 print(row.ticker)
@@ -284,11 +337,16 @@ def run_once(
                     return EXIT_FATAL
                 fresh = db.get(BarSync, row.ticker)
                 if fresh is not None:
-                    fresh.status = "error"
+                    sym = db.get(Symbol, fresh.ticker)
+                    warrant_rejected = status == 400 and sym is not None and sym.type == "warrant"
+                    fresh.status = "skipped" if warrant_rejected else "error"
                     fresh.last_error = str(exc)[:500]
                     fresh.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                     db.commit()
-                print(f"{row.ticker} error")
+                if fresh is not None and fresh.status == "skipped":
+                    print(f"{row.ticker} skipped")
+                else:
+                    print(f"{row.ticker} error")
             except httpx.HTTPError as exc:
                 fresh = db.get(BarSync, row.ticker)
                 if fresh is not None:
@@ -314,7 +372,13 @@ def run_once(
         completed = sum(1 for row in tracked if row.status == "complete")
         partial = sum(1 for row in tracked if row.status == "partial")
         errors = sum(1 for row in tracked if row.status == "error")
-        print(f"completed={completed} partial={partial} error={errors}")
+        skipped = sum(1 for row in tracked if row.status == "skipped")
+        print(f"completed={completed} partial={partial} error={errors} skipped={skipped}")
+        if allows_official_bar(local_now):
+            try:
+                run_pattern_scan(db, target, settings)
+            except Exception as exc:
+                print(f"pattern scan error: {exc}")
         return EXIT_OK
     except BackfillInterrupted:
         print(f"stopped at {current}" if current else "stopped")

@@ -25,6 +25,13 @@ class SymbolRow(BaseModel):
     watchlist: bool = False
 
 
+class SymbolPage(BaseModel):
+    items: list[SymbolRow]
+    total: int
+    limit: int
+    offset: int
+
+
 class BarOut(BaseModel):
     date: date
     open: int
@@ -76,3 +83,37 @@ class AlertOut(BaseModel):
     mode: str
     enabled: bool
     last_fired_at: datetime | None = None
+
+
+class PatternIn(BaseModel):
+    name: str
+    reference: str
+    min_score: float = 0.85
+    top_k: int = 20
+    enabled: bool = True
+
+
+class PatternOut(BaseModel):
+    id: int
+    name: str
+    kind: str
+    schedule: str
+    enabled: bool
+    spec: dict[str, Any]
+
+
+class HitOut(BaseModel):
+    ticker: str
+    name: str
+    score: float
+    window_start: date
+    window_end: date
+
+
+class HitsOut(BaseModel):
+    pattern_id: int
+    name: str
+    reference: str
+    as_of: date | None = None
+    reference_compared: bool | None = None
+    hits: list[HitOut] = Field(default_factory=list)

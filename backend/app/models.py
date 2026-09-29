@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -139,6 +140,43 @@ class CompanyCache(Base):
     ticker: Mapped[str] = mapped_column(String(32), primary_key=True)
     payload: Mapped[dict] = mapped_column(JSON)
     fetched_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class PatternDef(Base):
+    __tablename__ = "pattern_def"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(16), default="lookalike")
+    spec: Mapped[dict] = mapped_column(JSON)
+    schedule: Mapped[str] = mapped_column(String(16), default="daily")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ScanRun(Base):
+    __tablename__ = "scan_run"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    pattern_id: Mapped[int] = mapped_column(ForeignKey("pattern_def.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(16))
+    eligible_count: Mapped[int] = mapped_column(Integer, default=0)
+    compared_count: Mapped[int] = mapped_column(Integer, default=0)
+    as_of: Mapped[date] = mapped_column(Date)
+    reference_compared: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ScanHit(Base):
+    __tablename__ = "scan_hit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("scan_run.id"), index=True)
+    pattern_id: Mapped[int] = mapped_column(ForeignKey("pattern_def.id"), index=True)
+    ticker: Mapped[str] = mapped_column(String(32))
+    score: Mapped[float] = mapped_column(Float)
+    window_start: Mapped[date] = mapped_column(Date)
+    window_end: Mapped[date] = mapped_column(Date)
 
 
 class BarSync(Base):

@@ -12,10 +12,20 @@ from app.main import create_app
 FIX = Path(__file__).parent / "fixtures"
 
 
+def _require_test_database(url: str) -> str:
+    name = url.rsplit("/", 1)[-1].split("?")[0]
+    if "test" not in name.lower():
+        raise RuntimeError(
+            f"Refusing to drop schema {name!r}. Point DATABASE_URL at a test database such as finmon_test."
+        )
+    return url
+
+
 @pytest.fixture(scope="session")
 def engine():
     settings = get_settings()
-    eng = create_engine(settings.database_url, pool_pre_ping=True)
+    url = _require_test_database(settings.database_url)
+    eng = create_engine(url, pool_pre_ping=True)
     with eng.connect() as conn:
         conn.execute(text("SELECT 1"))
     return eng

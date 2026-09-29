@@ -1,7 +1,8 @@
 import ReactECharts from "echarts-for-react";
 import { useMemo } from "react";
 import type { Bar } from "../api";
-import { IconButton } from "../design-system";
+import { IconButton, formatDong } from "../design-system";
+import { ToolGlyph } from "../design-system/icons";
 import type { Drawing, DrawingTool } from "./drawings";
 import { categoryIndex, FIB_LEVELS } from "./drawings";
 
@@ -41,7 +42,6 @@ export function DailyChart({
     const up = cssVar("--up");
     const down = cssVar("--down");
     const border = cssVar("--border");
-    const bg = cssVar("--bg");
     const faint = cssVar("--text-faint");
     const elev = cssVar("--bg-elev");
     const text = cssVar("--text");
@@ -74,7 +74,7 @@ export function DailyChart({
       }
     }
     return {
-      backgroundColor: bg,
+      backgroundColor: "transparent",
       animation: false,
       tooltip: {
         trigger: "axis",
@@ -139,22 +139,48 @@ export function DailyChart({
     { id: "pin", label: "pin" },
     { id: "delete", label: "delete selected" },
   ];
+  const last = bars.at(-1);
+  const smaLast = showSma ? ([...(sma20 ?? [])].reverse().find((value) => value != null) ?? null) : null;
+  const volClass = last && last.close >= last.open ? "up" : "down";
 
   return (
-    <div>
-      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+    <div className="chart-stack" data-ticker={ticker}>
+      <div className="tool-row">
         {tools.map((t) => (
           <IconButton key={t.id} label={t.label} active={tool === t.id} onClick={() => onTool(t.id)}>
-            {t.label[0].toUpperCase()}
+            <ToolGlyph name={t.id} />
           </IconButton>
         ))}
-        <label style={{ marginLeft: 8, color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>
-          <input type="checkbox" checked={showSma} onChange={onToggleSma} /> SMA20
-        </label>
+        <span className="tool-sep" />
+        <button type="button" className={showSma ? "sma-chip on" : "sma-chip"} aria-pressed={showSma} onClick={onToggleSma}>
+          SMA 20
+        </button>
       </div>
+      {last ? (
+        <div className="ohlc">
+          <span>
+            O <b>{formatDong(last.open)}</b>
+          </span>
+          <span>
+            H <b>{formatDong(last.high)}</b>
+          </span>
+          <span>
+            L <b>{formatDong(last.low)}</b>
+          </span>
+          <span>
+            C <b>{formatDong(last.close)}</b>
+          </span>
+          <span className={volClass}>Vol {formatDong(last.volume)}</span>
+          {smaLast != null ? (
+            <span>
+              SMA(20) <b>{formatDong(smaLast)}</b>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <ReactECharts
         option={option}
-        style={{ height: 480 }}
+        style={{ height: 520 }}
         onEvents={{
           click: (params: { dataIndex?: number; value?: unknown }) => {
             if (tool === "pan" || params.dataIndex == null) return;
@@ -184,7 +210,6 @@ export function DailyChart({
           },
         }}
       />
-      <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)" }}>{ticker}</div>
     </div>
   );
 }

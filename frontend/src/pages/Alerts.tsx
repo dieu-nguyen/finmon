@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, type Alert } from "../api";
-import { Banner, Button, Input, Select, Table } from "../design-system";
+import { Badge, Banner, Button, Input, Select, Table, formatDong } from "../design-system";
+import { TrashIcon } from "../design-system/icons";
+
+function condition(op: string): string {
+  if (op === "gte") return "≥";
+  if (op === "lte") return "≤";
+  return op;
+}
 
 export function Alerts() {
   const [rows, setRows] = useState<Alert[]>([]);
@@ -15,12 +22,19 @@ export function Alerts() {
     load();
   }, []);
 
+  const active = rows.filter((row) => row.enabled).length;
+
   return (
     <div>
-      <h1 style={{ fontSize: "var(--fs-lg)", fontWeight: 500 }}>Alerts</h1>
+      <div className="page-head">
+        <h1 className="page-title">
+          Alerts
+          <span className="page-sub">{active} active</span>
+        </h1>
+      </div>
       {err ? <Banner kind="error">{err}</Banner> : null}
       <form
-        style={{ display: "flex", gap: 8, margin: "12px 0" }}
+        className="form-panel"
         onSubmit={async (e) => {
           e.preventDefault();
           await api.createAlert({ ticker, op, price: Number(price), mode });
@@ -29,40 +43,81 @@ export function Alerts() {
           load();
         }}
       >
-        <Input placeholder="Ticker" value={ticker} onChange={(e) => setTicker(e.target.value)} />
-        <Select value={op} onChange={(e) => setOp(e.target.value)}>
-          <option value="gte">gte</option>
-          <option value="lte">lte</option>
-        </Select>
-        <Input placeholder="Price (đồng)" value={price} onChange={(e) => setPrice(e.target.value)} />
-        <Select value={mode} onChange={(e) => setMode(e.target.value)}>
-          <option value="once">once</option>
-          <option value="repeat">repeat</option>
-        </Select>
-        <Button type="submit">Add alert</Button>
+        <div className="form-row">
+          <label className="field">
+            Ticker
+            <Input placeholder="Ticker" aria-label="Ticker" value={ticker} onChange={(e) => setTicker(e.target.value)} style={{ background: "var(--bg)", width: 120, fontFamily: "var(--font-num)", textTransform: "uppercase" }} />
+          </label>
+          <label className="field">
+            Condition
+            <Select value={op} onChange={(e) => setOp(e.target.value)} aria-label="Condition" style={{ background: "var(--bg)" }}>
+              <option value="gte">≥</option>
+              <option value="lte">≤</option>
+            </Select>
+          </label>
+          <label className="field">
+            Price (VND)
+            <Input placeholder="Price (đồng)" aria-label="Price" value={price} onChange={(e) => setPrice(e.target.value)} style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textAlign: "right" }} />
+          </label>
+          <label className="field">
+            Frequency
+            <Select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Frequency" style={{ background: "var(--bg)" }}>
+              <option value="once">once</option>
+              <option value="repeat">repeat</option>
+            </Select>
+          </label>
+          <div className="form-actions">
+            <Button type="submit">Add alert</Button>
+          </div>
+        </div>
       </form>
-      <Table>
-        <thead>
-          <tr>
-            {["Ticker", "Op", "Price", "Mode", "Fired"].map((h) => (
-              <th key={h} style={{ textAlign: "left", borderBottom: "1px solid var(--border)", height: 36 }}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} style={{ height: 36 }}>
-              <td style={{ fontFamily: "var(--font-num)" }}>{r.ticker}</td>
-              <td>{r.op}</td>
-              <td style={{ fontFamily: "var(--font-num)" }}>{r.price}</td>
-              <td>{r.mode}</td>
-              <td>{r.last_fired_at ?? "—"}</td>
+      <div className="table-panel">
+        <Table className="heads-up sticky-head">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th className="center">Condition</th>
+              <th className="num">Price (VND)</th>
+              <th>Frequency</th>
+              <th className="center">Status</th>
+              <th className="num">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </Table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td className="ticker-cell">{r.ticker}</td>
+                <td className="center ticker-cell">{condition(r.op)}</td>
+                <td className="num">{formatDong(r.price)}</td>
+                <td style={{ color: "var(--text-muted)" }}>{r.mode}</td>
+                <td className="center">
+                  <span title={r.last_fired_at ? `Fired ${r.last_fired_at}` : "Not fired"}>
+                    <Badge kind={r.enabled ? "up" : "muted"}>{r.enabled ? "enabled" : "disabled"}</Badge>
+                  </span>
+                </td>
+                <td className="num">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={`Delete ${r.ticker}`}
+                    title="Delete alert"
+                    onClick={async () => {
+                      try {
+                        await api.deleteAlert(r.id);
+                        load();
+                      } catch {
+                        setErr("Failed to delete alert");
+                      }
+                    }}
+                  >
+                    <TrashIcon />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </div>
     </div>
   );
 }

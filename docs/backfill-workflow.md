@@ -87,6 +87,8 @@ A MySQL named lock `finmon_backfill` is taken for each catch-up pass. If another
 
 Scope: listed stocks, ETFs, and indexes from DNSE `GET /instruments`. One process, one ticker at a time. Company fundamentals and live quotes are out of this command.
 
+Futures and bonds are not fetched. A `bar_sync` row whose symbol is a future or a bond, or whose board is `DVX` or `HCX`, is set to `skipped` and DNSE OHLC is not called. A warrant that returns bars is synced with the stocks, ETFs, and indexes. A warrant that returns HTTP 400 is set to `skipped` and is not requested again. A stock, ETF, or index that returns HTTP 400 stays `error` and is retried on a later run.
+
 The first pass walks history backward until DNSE returns an empty window. Later passes download only the days after `newest_date`, including a gap of several days if `start.sh` was stopped. Completed history is not downloaded again.
 
 A missing key, 401, or 403 is printed once and is not retried in a loop. A one-shot run (no `--follow`) still exits non-zero on those failures. A rate limit does not end the pass: section 4.5 sleeps until the window resets and continues.
@@ -101,7 +103,7 @@ New table `bar_sync`, one row per ticker:
 | `oldest_date` | Oldest date stored in `daily_bar` |
 | `newest_date` | Newest date stored in `daily_bar` |
 | `history_floor` | Oldest date DNSE has confirmed. Nothing earlier exists |
-| `status` | `pending`, `partial`, `complete`, or `error` |
+| `status` | `pending`, `partial`, `complete`, `error`, or `skipped` |
 | `last_error` | Last failure for this ticker. Empty when the last chunk succeeded |
 | `updated_at` | When the last chunk was committed |
 
@@ -110,11 +112,11 @@ New table `bar_sync`, one row per ticker:
 ### 4.2 One run
 
 1. Require DNSE API key and secret. Exit with a clear message when they are missing.
-2. `GET /instruments`, keep listed stock, ETF, and index, upsert `symbol`, commit. The market page can list names before any bars exist.
+2. `GET /instruments`, upsert the listed symbols, and keep stock, ETF, index, and warrant for OHLC. The market page can list names before any bars exist.
 3. Ensure every wanted symbol has a `bar_sync` row (`pending` when new).
-4. Build the work list. A ticker is done when `history_floor` is set and `newest_date` is on or after the latest weekday on or before today (Asia/Ho_Chi_Minh). Everything else is work: `partial` and `error` first, then `pending`, ticker order stable. `--ticker` limits the list to that symbol.
+4. Build the work list. A ticker is done when `history_floor` is set and `newest_date` is on or after the latest weekday on or before today (Asia/Ho_Chi_Minh). A `skipped` row is not work. Everything else is work: `partial` and `error` first, then `pending`, ticker order stable. `--ticker` limits the list to that symbol.
 5. For each ticker, fill forward, then backward. Commit after each chunk. See 4.3.
-6. Print one summary line: completed, still partial, and error counts.
+6. Print one summary line: completed, still partial, error, and skipped counts.
 
 **Target end date.** On a weekday before 16:30 ICT, the target is the previous weekday. Today's candle stays with the 30-minute job. At 16:30 ICT and after, and all day Saturday and Sunday, the target is the latest weekday on or before today, so today's official bar is included.
 
@@ -149,7 +151,7 @@ Re-running a finished ticker upserts the same dates. Rows are not duplicated.
 
 | Case | What the process does |
 | --- | --- |
-| One ticker returns 404 or another per-symbol error | Set that `bar_sync` row to `error` with `last_error`, continue with the next ticker |
+| One ticker returns 404 or another per-symbol error | Set that `bar_sync` row to `error` with `last_error`, continue with the next ticker. A warrant HTTP 400 is `skipped` instead |
 | 401 or 403 | Stop the run. The key is rejected |
 | 429 | Sleep until `X-RateLimit-Reset`, then retry the same chunk in this pass |
 | Ctrl+C | Finish the current chunk commit, print the ticker, exit |
