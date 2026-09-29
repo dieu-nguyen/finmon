@@ -197,7 +197,7 @@ function StatementSection({ title, rows, specs, ratio }: { title: string; rows: 
         {annual ? <span>Annual</span> : null}
       </h2>
       <div className="statement-scroll">
-        <Table>
+        <Table style={{ width: "max-content", minWidth: "100%" }}>
           <thead>
             <tr>
               <th>Metric</th>

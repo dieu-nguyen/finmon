@@ -14,7 +14,7 @@ export function SymbolPage() {
   const [row, setRow] = useState<SymbolRow | null>(null);
   const [sma, setSma] = useState<(number | null)[]>([]);
   const [showSma, setShowSma] = useState(true);
-  const [tab, setTab] = useState("Note");
+  const [tab, setTab] = useState("Company");
   const [note, setNote] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [company, setCompany] = useState<Record<string, unknown> | null | undefined>(undefined);
@@ -95,84 +95,78 @@ export function SymbolPage() {
         </div>
       </div>
       {err ? <Banner kind="error">{err}</Banner> : null}
-      {tab === "Company" ? (
-        <div className="company-screen">
-          <Tabs stretch tabs={["Note", "Company", "Alert"]} value={tab} onChange={setTab} />
-          <div style={{ marginTop: 16 }}>
-            {company ? <CompanyPanel payload={company} /> : company === null ? <EmptyState text="Company data unavailable" /> : <Spinner />}
-          </div>
+      <div className="symbol-split">
+        <div className="chart-frame">
+          {bars.length === 0 ? (
+            <EmptyState text={`No daily bars for ${t}`} />
+          ) : (
+            <DailyChart
+              ticker={t}
+              bars={bars}
+              sma20={sma}
+              showSma={showSma}
+              onToggleSma={() => setShowSma((v) => !v)}
+              drawings={drawings}
+              tool={tool}
+              onTool={setTool}
+              onDrawings={persistDrawings}
+            />
+          )}
         </div>
-      ) : (
-        <div className="symbol-split">
-          <div className="chart-frame">
-            {bars.length === 0 ? (
-              <EmptyState text={`No daily bars for ${t}`} />
-            ) : (
-              <DailyChart
-                ticker={t}
-                bars={bars}
-                sma20={sma}
-                showSma={showSma}
-                onToggleSma={() => setShowSma((v) => !v)}
-                drawings={drawings}
-                tool={tool}
-                onTool={setTool}
-                onDrawings={persistDrawings}
-              />
-            )}
-          </div>
-          <aside className="rail">
-            <Tabs stretch tabs={["Note", "Company", "Alert"]} value={tab} onChange={setTab} />
-            <div className="rail-body">
-              {tab === "Note" ? (
-                <>
-                  <textarea className="note-box" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
-                  <Button
-                    onClick={async () => {
-                      await api.savePageNote(t, note);
-                      setToast("Saved");
-                      window.setTimeout(() => setToast(null), 3000);
-                    }}
-                  >
-                    Save note
-                  </Button>
-                </>
-              ) : null}
-              {tab === "Alert" ? (
-                <form
-                  className="field-grid"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    await api.createAlert({ ticker: t, op, price: Number(price), mode });
+        <aside className="rail">
+          <Tabs stretch tabs={["Company", "Note", "Alert"]} value={tab} onChange={setTab} />
+          <div className="rail-body">
+            {tab === "Company" ? (
+              company ? <CompanyPanel payload={company} /> : company === null ? <EmptyState text="Company data unavailable" /> : <Spinner />
+            ) : null}
+            {tab === "Note" ? (
+              <>
+                <textarea className="note-box" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
+                <Button
+                  onClick={async () => {
+                    await api.savePageNote(t, note);
                     setToast("Saved");
                     window.setTimeout(() => setToast(null), 3000);
                   }}
                 >
-                  <label className="field">
-                    Condition
-                    <Select value={op} onChange={(e) => setOp(e.target.value)} aria-label="Condition">
-                      <option value="gte">≥</option>
-                      <option value="lte">≤</option>
-                    </Select>
-                  </label>
-                  <label className="field">
-                    Price
-                    <Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (đồng)" aria-label="Price" />
-                  </label>
-                  <label className="field">
-                    Frequency
-                    <Select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Frequency">
-                      <option value="once">once</option>
-                      <option value="repeat">repeat</option>
-                    </Select>
-                  </label>
-                  <Button type="submit">Add alert</Button>
-                </form>
-              ) : null}
-            </div>
-          </aside>
-        </div>
-      )}
+                  Save note
+                </Button>
+              </>
+            ) : null}
+            {tab === "Alert" ? (
+              <form
+                className="field-grid"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  await api.createAlert({ ticker: t, op, price: Number(price), mode });
+                  setToast("Saved");
+                  window.setTimeout(() => setToast(null), 3000);
+                }}
+              >
+                <label className="field">
+                  Condition
+                  <Select value={op} onChange={(e) => setOp(e.target.value)} aria-label="Condition">
+                    <option value="gte">≥</option>
+                    <option value="lte">≤</option>
+                  </Select>
+                </label>
+                <label className="field">
+                  Price
+                  <Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (đồng)" aria-label="Price" />
+                </label>
+                <label className="field">
+                  Frequency
+                  <Select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Frequency">
+                    <option value="once">once</option>
+                    <option value="repeat">repeat</option>
+                  </Select>
+                </label>
+                <Button type="submit">Add alert</Button>
+              </form>
+            ) : null}
+          </div>
+        </aside>
+      </div>
       {toast ? <Toast text={toast} /> : null}
     </div>
   );
