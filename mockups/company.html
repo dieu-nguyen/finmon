@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<title>Finmon Market Monitor - VCB</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "on-secondary-container": "#b1b5bf",
+          "inverse-primary": "#5c5e65",
+          "secondary-fixed": "#dee2ec",
+          "secondary-fixed-dim": "#c2c7d0",
+          "tertiary-fixed": "#dae3f4",
+          "on-secondary-fixed": "#171c23",
+          "inverse-on-surface": "#2a3136",
+          "on-background": "#dce3e9",
+          "outline": "#909095",
+          "background": "#0d1418",
+          "surface-container": "#192125",
+          "primary-fixed": "#e1e2e9",
+          "on-error-container": "#ffdad6",
+          "error": "#ffb4ab",
+          "on-primary-container": "#7a7d83",
+          "outline-variant": "#45474b",
+          "on-primary-fixed-variant": "#44474d",
+          "secondary-container": "#42474f",
+          "on-tertiary": "#28313e",
+          "surface-bright": "#333a3f",
+          "on-secondary-fixed-variant": "#42474f",
+          "surface-container-lowest": "#080f13",
+          "on-surface": "#dce3e9",
+          "surface-container-highest": "#2f363a",
+          "tertiary-container": "#08111d",
+          "on-tertiary-fixed-variant": "#3e4755",
+          "primary-container": "#0e1116",
+          "surface": "#0d1418",
+          "on-surface-variant": "#c6c6cb",
+          "on-tertiary-container": "#747d8c",
+          "primary": "#c4c6cd",
+          "error-container": "#93000a",
+          "surface-tint": "#c4c6cd",
+          "on-tertiary-fixed": "#131c28",
+          "tertiary-fixed-dim": "#bec7d8",
+          "surface-container-high": "#242b2f",
+          "on-secondary": "#2c3138",
+          "surface-dim": "#0d1418",
+          "surface-variant": "#2f363a",
+          "on-primary": "#2e3036",
+          "primary-fixed-dim": "#c4c6cd",
+          "secondary": "#c2c7d0",
+          "tertiary": "#bec7d8",
+          "inverse-surface": "#dce3e9",
+          "on-error": "#690005",
+          "on-primary-fixed": "#191c21",
+          "surface-container-low": "#151d21"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.25rem",
+          "lg": "0.5rem",
+          "xl": "0.75rem",
+          "full": "9999px"
+        },
+        "spacing": {
+          "space-xs": "4px",
+          "space-sm": "8px",
+          "space-lg": "24px",
+          "gutter": "12px",
+          "margin": "16px",
+          "space-xl": "32px",
+          "space-md": "16px"
+        },
+        "fontFamily": {
+          "headline-lg": ["IBM Plex Sans"],
+          "data-ticker": ["IBM Plex Mono"],
+          "label-mono": ["IBM Plex Mono"],
+          "body-md": ["IBM Plex Sans"],
+          "headline-sm": ["IBM Plex Sans"],
+          "label-mono-bold": ["IBM Plex Mono"],
+          "headline-md": ["IBM Plex Sans"],
+          "body-sm": ["IBM Plex Sans"]
+        },
+        "fontSize": {
+          "headline-lg": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+          "data-ticker": ["14px", {"lineHeight": "18px", "fontWeight": "500"}],
+          "label-mono": ["12px", {"lineHeight": "16px", "letterSpacing": "0.025em", "fontWeight": "400"}],
+          "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+          "headline-sm": ["16px", {"lineHeight": "24px", "fontWeight": "500"}],
+          "label-mono-bold": ["12px", {"lineHeight": "16px", "letterSpacing": "0.025em", "fontWeight": "600"}],
+          "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+          "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}]
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body {
+    background-color: #0e1116;
+    color: #dce3e9;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  .font-mono {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+</style>
+</head>
+<body class="bg-[#0e1116] text-[#dce3e9] flex flex-col h-screen overflow-hidden">
+<!-- Top App Bar -->
+<header class="bg-surface text-primary flex justify-between items-center w-full px-margin h-12 border-b border-[#2a3340] z-50 flex-shrink-0">
+<div class="flex items-center space-x-space-sm">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">monitoring</span>
+<span class="text-headline-md font-bold text-primary tracking-tight">finmon</span>
+</div>
+<div class="flex items-center space-x-space-md text-label-mono text-[#8b9bb4]">
+<span>as of 14:32 ICT</span>
+<div class="flex items-center space-x-space-xs bg-[#161b22] px-space-sm py-1 rounded border border-[#2a3340]">
+<span class="w-2 h-2 rounded-full bg-[#3dd68c]"></span>
+<span class="text-[#e6edf3] font-medium">ok</span>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- Left Navigation -->
+<aside class="w-[220px] bg-[#161b22] border-r border-[#2a3340] flex flex-col pt-space-md flex-shrink-0">
+<div class="px-space-md pb-space-md border-b border-[#2a3340]">
+<div class="text-[11px] font-mono uppercase tracking-wider text-[#8b9bb4]">Terminal Navigation</div>
+</div>
+<nav class="flex flex-col py-space-sm space-y-1">
+<a class="flex items-center space-x-space-sm px-space-md py-2.5 bg-[#161b22] text-[#e6edf3] border-l-2 border-[#6ea8fe] font-medium text-body-md transition-all" href="#">
+<span class="material-symbols-outlined text-[#6ea8fe]" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span>Market</span>
+</a>
+<a class="flex items-center space-x-space-sm px-space-md py-2.5 text-[#8b9bb4] hover:bg-[#1f2630] hover:text-[#e6edf3] border-l-2 border-transparent text-body-md transition-all" href="#">
+<span class="material-symbols-outlined">notifications</span>
+<span>Alerts</span>
+</a>
+<a class="flex items-center space-x-space-sm px-space-md py-2.5 text-[#8b9bb4] hover:bg-[#1f2630] hover:text-[#e6edf3] border-l-2 border-transparent text-body-md transition-all" href="#">
+<span class="material-symbols-outlined">radar</span>
+<span>Scans</span>
+</a>
+</nav>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 overflow-y-auto p-margin space-y-margin bg-[#0e1116]">
+<!-- VCB Company Overview Card -->
+<section class="bg-[#161b22] border border-[#2a3340] rounded p-space-md shadow-sm">
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-space-md border-b border-[#2a3340] gap-4">
+<div>
+<div class="flex items-center space-x-space-sm">
+<h1 class="text-headline-lg text-[#e6edf3] font-bold">VCB</h1>
+<span class="px-space-sm py-0.5 bg-[#2a3340] text-[#c6c6cb] text-label-mono rounded border border-[#45474b]">HOSE</span>
+<span class="text-body-sm text-[#8b9bb4]">Banks</span>
+</div>
+<div class="text-body-md text-[#8b9bb4]">Ngân hàng TMCP Ngoại thương Việt Nam (Vietcombank)</div>
+</div>
+<div class="flex items-baseline space-x-space-sm bg-[#0e1116] px-space-md py-2 rounded border border-[#2a3340]">
+<span class="text-headline-md font-mono text-[#e6edf3]">92.600</span>
+<span class="text-data-ticker font-mono text-[#3dd68c]">+1.200 (+1.31%)</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-space-md py-space-md border-b border-[#2a3340] text-body-sm">
+<div>
+<span class="text-[#8b9bb4] block text-label-mono">Listed shares</span>
+<span class="font-mono text-[#e6edf3] font-medium">5.597.730.000</span>
+</div>
+<div>
+<span class="text-[#8b9bb4] block text-label-mono">Market cap</span>
+<span class="font-mono text-[#e6edf3] font-medium">517.845.280.000.000 đ</span>
+</div>
+<div>
+<span class="text-[#8b9bb4] block text-label-mono">Ownership Structure</span>
+<div class="flex space-x-space-sm font-mono text-[#e6edf3] text-xs mt-0.5">
+<span title="Free float">FF: 12.5%</span>
+<span title="Foreign">For: 23.0%</span>
+<span title="State">State: 74.8%</span>
+</div>
+</div>
+<div>
+<span class="text-[#8b9bb4] block text-label-mono">Exchange / Sector</span>
+<span class="text-[#e6edf3]">HOSE / Financials</span>
+</div>
+</div>
+<div class="pt-space-md">
+<p class="text-body-sm text-[#c6c6cb] leading-relaxed">
+            Joint Stock Commercial Bank for Foreign Trade of Vietnam (Vietcombank) is a leading commercial bank in Vietnam offering a comprehensive range of financial services including corporate banking, retail banking, investment, international trade finance, and treasury operations. Established in 1963, it plays a systemic role in the national economy and capital markets.
+          </p>
+</div>
+</section>
+<!-- Unit Label -->
+<div class="flex justify-end items-center">
+<span class="text-label-mono text-[#8b9bb4] bg-[#161b22] px-2 py-1 rounded border border-[#2a3340]">Unit: đồng</span>
+</div>
+<!-- Financial Tables Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-space-md">
+<!-- 1. Income -->
+<div class="bg-[#161b22] border border-[#2a3340] rounded overflow-hidden">
+<div class="bg-[#192125] px-space-md py-3 border-b border-[#2a3340] flex justify-between items-center">
+<h3 class="text-headline-sm font-bold text-[#e6edf3]">Income Statement</h3>
+<span class="text-label-mono text-[#8b9bb4]">Annual</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-[#2a3340] text-label-mono-bold text-[#8b9bb4] bg-[#0e1116]/50">
+<th class="py-2 px-space-md">Metric</th>
+<th class="py-2 px-space-md text-right font-mono">2022</th>
+<th class="py-2 px-space-md text-right font-mono">2023</th>
+<th class="py-2 px-space-md text-right font-mono">2024</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#2a3340]/40 text-body-sm">
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Revenue</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">58.420.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">64.120.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">71.300.000.000</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Gross profit</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">58.420.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">64.120.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">71.300.000.000</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Operating profit</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">37.380.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">41.200.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">45.900.000.000</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Net profit</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">29.950.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">33.020.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">36.800.000.000</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- 2. Balance Sheet -->
+<div class="bg-[#161b22] border border-[#2a3340] rounded overflow-hidden">
+<div class="bg-[#192125] px-space-md py-3 border-b border-[#2a3340] flex justify-between items-center">
+<h3 class="text-headline-sm font-bold text-[#e6edf3]">Balance Sheet</h3>
+<span class="text-label-mono text-[#8b9bb4]">Annual</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-[#2a3340] text-label-mono-bold text-[#8b9bb4] bg-[#0e1116]/50">
+<th class="py-2 px-space-md">Metric</th>
+<th class="py-2 px-space-md text-right font-mono">2022</th>
+<th class="py-2 px-space-md text-right font-mono">2023</th>
+<th class="py-2 px-space-md text-right font-mono">2024</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#2a3340]/40 text-body-sm">
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Total assets</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.800.500.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.830.000.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.950.000.000.000</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Liabilities</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.650.200.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.670.000.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.775.000.000.000</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Equity</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">150.300.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">160.000.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">175.000.000.000</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- 3. Cash Flow -->
+<div class="bg-[#161b22] border border-[#2a3340] rounded overflow-hidden">
+<div class="bg-[#192125] px-space-md py-3 border-b border-[#2a3340] flex justify-between items-center">
+<h3 class="text-headline-sm font-bold text-[#e6edf3]">Cash Flow</h3>
+<span class="text-label-mono text-[#8b9bb4]">Annual</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-[#2a3340] text-label-mono-bold text-[#8b9bb4] bg-[#0e1116]/50">
+<th class="py-2 px-space-md">Metric</th>
+<th class="py-2 px-space-md text-right font-mono">2022</th>
+<th class="py-2 px-space-md text-right font-mono">2023</th>
+<th class="py-2 px-space-md text-right font-mono">2024</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#2a3340]/40 text-body-sm">
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Operating cash flow</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">12.400.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">15.800.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">18.200.000.000</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Capex</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">-1.200.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">-1.500.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">-1.800.000.000</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Ending cash</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">45.200.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">52.100.000.000</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">61.400.000.000</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- 4. Ratios -->
+<div class="bg-[#161b22] border border-[#2a3340] rounded overflow-hidden">
+<div class="bg-[#192125] px-space-md py-3 border-b border-[#2a3340] flex justify-between items-center">
+<h3 class="text-headline-sm font-bold text-[#e6edf3]">Financial Ratios</h3>
+<span class="text-label-mono text-[#8b9bb4]">Annual</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-[#2a3340] text-label-mono-bold text-[#8b9bb4] bg-[#0e1116]/50">
+<th class="py-2 px-space-md">Metric</th>
+<th class="py-2 px-space-md text-right font-mono">2022</th>
+<th class="py-2 px-space-md text-right font-mono">2023</th>
+<th class="py-2 px-space-md text-right font-mono">2024</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#2a3340]/40 text-body-sm">
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">P/E</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">14.5</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">13.8</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">12.5</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">P/B</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">2.4</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">2.2</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">2.0</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">ROE</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">19.9%</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">20.6%</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">21.0%</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">ROA</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.6%</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.8%</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">1.9%</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Profit margin</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">51.2%</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">51.5%</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">51.6%</td>
+</tr>
+<tr class="hover:bg-[#1f2630]/50">
+<td class="py-2.5 px-space-md text-[#8b9bb4]">Debt/equity</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">10.9x</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">10.4x</td>
+<td class="py-2.5 px-space-md text-right font-mono text-[#e6edf3]">10.1x</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

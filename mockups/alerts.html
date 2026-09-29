@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>finmon - Alerts</title>
+<!-- Tailwind CSS v3 with plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts for IBM Plex Sans & IBM Plex Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind Custom Configuration -->
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            terminal: {
+              bg: '#0e1116',
+              surface: '#161b22',
+              border: '#2a3340',
+              text: '#e6edf3',
+              label: '#8b9bb4',
+              accent: '#6ea8fe',
+              up: '#3dd68c',
+              down: '#f87171',
+              hover: '#1c2430'
+            }
+          },
+          fontFamily: {
+            sans: ['"IBM Plex Sans"', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace']
+          },
+          spacing: {
+            '4.5': '1.125rem',
+            '8.5': '2.125rem',
+          }
+        }
+      }
+    }
+  </script>
+<!-- BEGIN: CustomStyles -->
+<style data-purpose="terminal-custom-styles">
+    body {
+      background-color: #0e1116;
+      color: #e6edf3;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .font-mono {
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    /* Custom scrollbar for precise financial terminal look */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0e1116;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2a3340;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3a4759;
+    }
+  </style>
+<!-- END: CustomStyles -->
+</head>
+<body class="h-full overflow-hidden flex flex-col antialiased selection:bg-[#6ea8fe] selection:text-[#0e1116]">
+<!-- BEGIN: TopBar -->
+<header class="h-[48px] bg-[#161b22] border-b border-[#2a3340] flex items-center justify-between px-4 shrink-0 select-none" data-purpose="top-navigation">
+<!-- Brand / Logo -->
+<div class="flex items-center space-x-3">
+<span class="font-mono font-semibold text-lg tracking-tight text-[#e6edf3]">finmon</span>
+<span class="text-xs px-1.5 py-0.5 rounded bg-[#2a3340] text-[#8b9bb4] font-mono">vn-eq</span>
+</div>
+<!-- Status and Time -->
+<div class="flex items-center space-x-4">
+<div class="text-xs text-[#8b9bb4] font-mono">
+        as of <span class="text-[#e6edf3]">14:32</span> ICT
+      </div>
+<!-- Status Pill -->
+<div class="flex items-center space-x-1.5 bg-[#0e1116] border border-[#2a3340] px-2.5 py-1 rounded">
+<span class="w-2 h-2 rounded-full bg-[#3dd68c] animate-pulse"></span>
+<span class="text-xs font-mono font-medium text-[#3dd68c] uppercase tracking-wider">ok</span>
+</div>
+</div>
+</header>
+<!-- END: TopBar -->
+<!-- BEGIN: MainLayout -->
+<div class="flex-1 flex overflow-hidden">
+<!-- BEGIN: LeftNav -->
+<nav class="w-[220px] bg-[#161b22] border-r border-[#2a3340] flex flex-col py-3 shrink-0 select-none" data-purpose="sidebar-navigation">
+<div class="px-3 mb-2">
+<span class="text-[11px] font-mono uppercase tracking-wider text-[#8b9bb4] px-3">Terminal</span>
+</div>
+<div class="space-y-1 px-2">
+<!-- Market Link -->
+<a class="flex items-center h-8 px-3 rounded text-sm text-[#8b9bb4] hover:text-[#e6edf3] hover:bg-[#1c2430] transition-colors" href="#">
+<span class="font-mono text-xs mr-3 text-[#8b9bb4]">01</span>
+<span>Market</span>
+</a>
+<!-- Alerts Link (Active) -->
+<a class="flex items-center justify-between h-8 px-3 rounded bg-[#1c2430] text-[#e6edf3] relative border-l-2 border-[#6ea8fe] font-medium transition-colors" href="#">
+<div class="flex items-center">
+<span class="font-mono text-xs mr-3 text-[#6ea8fe]">02</span>
+<span>Alerts</span>
+</div>
+<span class="w-1.5 h-1.5 rounded-full bg-[#6ea8fe]"></span>
+</a>
+<!-- Scans Link -->
+<a class="flex items-center h-8 px-3 rounded text-sm text-[#8b9bb4] hover:text-[#e6edf3] hover:bg-[#1c2430] transition-colors" href="#">
+<span class="font-mono text-xs mr-3 text-[#8b9bb4]">03</span>
+<span>Scans</span>
+</a>
+</div>
+<!-- Bottom System Info -->
+<div class="mt-auto px-5 py-3 border-t border-[#2a3340] text-[11px] font-mono text-[#8b9bb4] space-y-1">
+<div class="flex justify-between">
+<span>NODE:</span>
+<span class="text-[#e6edf3]">SG-01</span>
+</div>
+<div class="flex justify-between">
+<span>LATENCY:</span>
+<span class="text-[#3dd68c]">12ms</span>
+</div>
+</div>
+</nav>
+<!-- END: LeftNav -->
+<!-- BEGIN: MainContent -->
+<main class="flex-1 bg-[#0e1116] p-4 overflow-y-auto" data-purpose="main-viewport">
+<div class="max-w-6xl mx-auto space-y-4">
+<!-- Page Header & Actions -->
+<div class="flex items-center justify-between">
+<div class="flex items-baseline space-x-3">
+<h1 class="text-xl font-semibold tracking-tight text-[#e6edf3]">Alerts</h1>
+<span class="text-xs font-mono text-[#8b9bb4]">3 active triggers</span>
+</div>
+<!-- New Alert Control (32px tall, slight rounding, 4px scale spacing) -->
+<button class="h-8 px-3.5 bg-[#6ea8fe] hover:bg-[#5b96ef] text-[#0e1116] font-medium text-xs rounded transition-colors flex items-center space-x-1.5 focus:outline-none focus:ring-1 focus:ring-[#6ea8fe]" type="button">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24">
+<path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span>New Alert</span>
+</button>
+</div>
+<!-- Alerts Table Panel -->
+<div class="bg-[#161b22] border border-[#2a3340] rounded overflow-hidden">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<!-- Sticky Header -->
+<thead>
+<tr class="bg-[#161b22] border-b border-[#2a3340] text-xs font-mono text-[#8b9bb4] uppercase tracking-wider select-none">
+<th class="py-2.5 px-4 font-medium">Ticker</th>
+<th class="py-2.5 px-4 font-medium text-center">Condition</th>
+<th class="py-2.5 px-4 font-medium text-right">Price (VND)</th>
+<th class="py-2.5 px-4 font-medium">Frequency</th>
+<th class="py-2.5 px-4 font-medium text-center">Status</th>
+<th class="py-2.5 px-4 font-medium text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#2a3340] text-sm">
+<!-- Row 1: VCB -->
+<tr class="h-[36px] hover:bg-[#1c2430] transition-colors group">
+<td class="py-2 px-4 font-mono font-medium text-[#e6edf3]">VCB</td>
+<td class="py-2 px-4 font-mono text-center text-[#8b9bb4]">≥</td>
+<td class="py-2 px-4 font-mono text-right text-[#e6edf3]">95.000</td>
+<td class="py-2 px-4 text-[#8b9bb4] text-xs">once</td>
+<td class="py-2 px-4 text-center">
+<!-- Custom Toggle: Enabled -->
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-[#3dd68c]/10 text-[#3dd68c] border border-[#3dd68c]/20">
+                      enabled
+                    </span>
+</td>
+<td class="py-2 px-4 text-right">
+<button class="w-7 h-7 rounded hover:bg-[#2a3340] text-[#8b9bb4] hover:text-[#f87171] inline-flex items-center justify-center transition-colors" title="Delete alert" type="button">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
+<path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</td>
+</tr>
+<!-- Row 2: HPG -->
+<tr class="h-[36px] hover:bg-[#1c2430] transition-colors group">
+<td class="py-2 px-4 font-mono font-medium text-[#e6edf3]">HPG</td>
+<td class="py-2 px-4 font-mono text-center text-[#8b9bb4]">≤</td>
+<td class="py-2 px-4 font-mono text-right text-[#e6edf3]">26.500</td>
+<td class="py-2 px-4 text-[#8b9bb4] text-xs">repeat</td>
+<td class="py-2 px-4 text-center">
+<!-- Custom Toggle: Enabled -->
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-[#3dd68c]/10 text-[#3dd68c] border border-[#3dd68c]/20">
+                      enabled
+                    </span>
+</td>
+<td class="py-2 px-4 text-right">
+<button class="w-7 h-7 rounded hover:bg-[#2a3340] text-[#8b9bb4] hover:text-[#f87171] inline-flex items-center justify-center transition-colors" title="Delete alert" type="button">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
+<path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</td>
+</tr>
+<!-- Row 3: FPT -->
+<tr class="h-[36px] hover:bg-[#1c2430] transition-colors group opacity-60">
+<td class="py-2 px-4 font-mono font-medium text-[#e6edf3]">FPT</td>
+<td class="py-2 px-4 font-mono text-center text-[#8b9bb4]">≥</td>
+<td class="py-2 px-4 font-mono text-right text-[#e6edf3]">130.000</td>
+<td class="py-2 px-4 text-[#8b9bb4] text-xs">once</td>
+<td class="py-2 px-4 text-center">
+<!-- Custom Toggle: Disabled -->
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-[#2a3340] text-[#8b9bb4] border border-[#2a3340]">
+                      disabled
+                    </span>
+</td>
+<td class="py-2 px-4 text-right">
+<button class="w-7 h-7 rounded hover:bg-[#2a3340] text-[#8b9bb4] hover:text-[#f87171] inline-flex items-center justify-center transition-colors" title="Delete alert" type="button">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
+<path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</main>
+<!-- END: MainContent -->
+</div>
+<!-- END: MainLayout -->
+</body></html>

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Private Equity Monitor Vietnam - FinMon Terminal</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+              "on-primary-fixed": "#001b3c",
+              "on-secondary-container": "#a9b9d3",
+              "surface-variant": "#30353d",
+              "surface-container-high": "#252a32",
+              "primary": "#a8c8ff",
+              "on-secondary": "#213146",
+              "on-background": "#dee2ec",
+              "tertiary-container": "#a5a7ae",
+              "surface-container": "#1b2027",
+              "primary-fixed-dim": "#a8c8ff",
+              "secondary-container": "#3a4a60",
+              "error": "#ffb4ab",
+              "on-primary-container": "#003c76",
+              "error-container": "#93000a",
+              "primary-container": "#6ea8fe",
+              "background": "#0f141b",
+              "inverse-on-surface": "#2c3138",
+              "primary-fixed": "#d5e3ff",
+              "surface-tint": "#a8c8ff",
+              "on-tertiary-fixed-variant": "#44474d",
+              "surface": "#0f141b",
+              "surface-bright": "#343941",
+              "on-tertiary-container": "#3a3d42",
+              "on-error-container": "#ffdad6",
+              "on-secondary-fixed-variant": "#38485d",
+              "outline-variant": "#424751",
+              "secondary-fixed": "#d3e4ff",
+              "on-primary": "#003061",
+              "on-primary-fixed-variant": "#004689",
+              "on-tertiary-fixed": "#191c21",
+              "on-secondary-fixed": "#0b1c30",
+              "surface-dim": "#0f141b",
+              "inverse-surface": "#dee2ec",
+              "tertiary-fixed-dim": "#c4c6cd",
+              "surface-container-low": "#171c23",
+              "surface-container-lowest": "#090f15",
+              "inverse-primary": "#115eaf",
+              "secondary": "#b7c8e2",
+              "on-tertiary": "#2e3036",
+              "tertiary": "#c4c6cd",
+              "on-error": "#690005",
+              "on-surface-variant": "#c2c6d3",
+              "secondary-fixed-dim": "#b7c8e2",
+              "tertiary-fixed": "#e1e2e9",
+              "on-surface": "#dee2ec",
+              "outline": "#8c919d",
+              "surface-container-highest": "#30353d"
+            },
+            "borderRadius": {
+              "DEFAULT": "0.25rem",
+              "lg": "0.5rem",
+              "xl": "0.75rem",
+              "full": "9999px"
+            },
+            "spacing": {
+              "space-sm": "0.5rem",
+              "space-xl": "1.5rem",
+              "margin": "1rem",
+              "space-lg": "1rem",
+              "space-xs": "0.25rem",
+              "gutter": "0.75rem",
+              "space-md": "0.75rem"
+            },
+            "fontFamily": {
+              "body-sm": ["IBM Plex Sans"],
+              "label": ["IBM Plex Mono"],
+              "headline-sm": ["IBM Plex Sans"],
+              "numeric-md": ["IBM Plex Mono"],
+              "numeric-sm": ["IBM Plex Mono"],
+              "headline-lg": ["IBM Plex Sans"],
+              "headline-md": ["IBM Plex Sans"],
+              "numeric-lg": ["IBM Plex Mono"],
+              "body-md": ["IBM Plex Sans"]
+            },
+            "fontSize": {
+              "body-sm": ["12px", {"lineHeight": "16px", "fontWeight": "400"}],
+              "label": ["11px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+              "headline-sm": ["14px", {"lineHeight": "20px", "fontWeight": "600"}],
+              "numeric-md": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+              "numeric-sm": ["12px", {"lineHeight": "16px", "fontWeight": "400"}],
+              "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+              "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+              "numeric-lg": ["20px", {"lineHeight": "24px", "fontWeight": "500"}],
+              "body-md": ["13px", {"lineHeight": "18px", "fontWeight": "400"}]
+            }
+          }
+        }
+      }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased min-h-screen flex flex-col overflow-x-auto">
+<!-- Top App Bar -->
+<header class="bg-surface-container dark:bg-surface-container border-b border-outline-variant flex justify-between items-center w-full px-4 h-12 shrink-0">
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">monitoring</span>
+<span class="font-headline-md text-headline-md font-bold text-primary tracking-tight">finmon</span>
+</div>
+<div class="flex items-center space-x-4">
+<span class="font-label text-on-surface-variant">as of 14:32 ICT</span>
+<div class="flex items-center space-x-1.5 bg-surface-container-high px-2.5 py-1 rounded border border-outline-variant">
+<span class="w-2 h-2 rounded-full bg-[#3dd68c] animate-pulse"></span>
+<span class="font-label uppercase text-[#3dd68c]">ok</span>
+</div>
+</div>
+</header>
+<div class="flex flex-1 min-h-0">
+<!-- Side Navigation (220px fixed) -->
+<aside class="w-[220px] bg-surface-container-lowest dark:bg-surface-container-lowest border-r border-outline-variant flex flex-col justify-between p-space-md shrink-0">
+<nav class="flex flex-col space-y-1">
+<div class="px-3 py-2 text-[10px] font-label text-outline uppercase tracking-wider mb-1">Terminal Navigation</div>
+<a class="flex items-center space-x-3 px-3 h-8 text-on-surface-variant hover:bg-surface-variant transition-colors rounded" href="#">
+<span class="material-symbols-outlined text-lg">dashboard</span>
+<span class="font-body-md">Market</span>
+</a>
+<a class="flex items-center space-x-3 px-3 h-8 text-on-surface-variant hover:bg-surface-variant transition-colors rounded" href="#">
+<span class="material-symbols-outlined text-lg">notifications</span>
+<span class="font-body-md">Alerts</span>
+</a>
+<a class="flex items-center space-x-3 px-3 h-8 text-on-primary-container bg-primary-container rounded font-medium relative overflow-hidden" href="#">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<span class="material-symbols-outlined text-lg" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<span class="font-body-md">Scans</span>
+</a>
+</nav>
+<div class="p-3 bg-surface-container rounded border border-outline-variant">
+<div class="font-label text-outline mb-1">DATA FEED</div>
+<div class="font-numeric-sm text-on-surface flex justify-between">
+<span>HOSE Latency</span>
+<span class="text-[#3dd68c]">12ms</span>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 p-space-lg overflow-y-auto flex flex-col space-y-space-lg bg-background">
+<!-- Header Section with Match Score Indicator -->
+<div class="bg-[#161b22] border border-[#2a3340] p-4 rounded flex items-center justify-between">
+<div class="flex items-center space-x-6">
+<div>
+<div class="font-label text-outline mb-0.5">REFERENCE ASSET</div>
+<div class="font-headline-lg font-bold text-on-surface flex items-center space-x-2">
+<span>VCB</span>
+<span class="text-xs font-numeric-sm font-normal text-outline">Vietcombank</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline">compare_arrows</span>
+<div>
+<div class="font-label text-outline mb-0.5">MATCH ASSET</div>
+<div class="font-headline-lg font-bold text-on-surface flex items-center space-x-2">
+<span>ACB</span>
+<span class="text-xs font-numeric-sm font-normal text-outline">Asia Commercial Bank</span>
+</div>
+</div>
+</div>
+<div class="flex items-center space-x-4 bg-surface-container px-4 py-2.5 rounded border border-outline-variant">
+<div class="text-right">
+<div class="font-label text-outline">ALGORITHM MATCH SCORE</div>
+<div class="font-numeric-lg text-primary font-bold">0.91</div>
+</div>
+<div class="h-8 w-px bg-outline-variant"></div>
+<div class="flex flex-col justify-center">
+<span class="font-label text-[#3dd68c] flex items-center space-x-1">
+<span class="material-symbols-outlined text-xs">trending_up</span>
+<span>High Correlation</span>
+</span>
+<span class="font-numeric-sm text-outline">90 Sessions Window</span>
+</div>
+</div>
+</div>
+<!-- Two Daily Charts Side by Side -->
+<div class="grid grid-cols-2 gap-space-lg">
+<!-- Left Chart: Reference VCB -->
+<div class="bg-[#161b22] border border-[#2a3340] p-4 rounded flex flex-col h-[380px]">
+<div class="flex justify-between items-center mb-3 pb-2 border-b border-[#2a3340]">
+<div class="flex items-center space-x-3">
+<span class="font-headline-sm text-on-surface">VCB (Reference)</span>
+<span class="font-numeric-md text-[#3dd68c]">92.600 đ</span>
+</div>
+<div class="flex space-x-1">
+<span class="px-2 py-0.5 bg-surface-container text-xs font-numeric-sm text-outline rounded border border-outline-variant">90D</span>
+<span class="px-2 py-0.5 bg-surface-container text-xs font-numeric-sm text-outline rounded border border-outline-variant">HOSE</span>
+</div>
+</div>
+<!-- Chart Canvas Simulation -->
+<div class="flex-1 relative flex flex-col justify-between font-numeric-sm text-outline">
+<!-- Y-Axis Labels -->
+<div class="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-40">
+<div class="border-b border-dashed border-outline-variant w-full flex justify-end pr-1 text-[10px]">96.000</div>
+<div class="border-b border-dashed border-outline-variant w-full flex justify-end pr-1 text-[10px]">94.000</div>
+<div class="border-b border-dashed border-outline-variant w-full flex justify-end pr-1 text-[10px]">92.000</div>
+<div class="border-b border-dashed border-outline-variant w-full flex justify-end pr-1 text-[10px]">90.000</div>
+<div class="w-full flex justify-end pr-1 text-[10px]">88.000</div>
+</div>
+<!-- Candlestick representation (CSS Grid/Flex simulation) -->
+<div class="relative z-10 h-[240px] flex items-end justify-between px-2 pt-4">
+<!-- Simulated Candles -->
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-16 w-px bg-[#3dd68c]"></div><div class="w-1 h-10 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-20 w-px bg-[#f87171]"></div><div class="w-1 h-12 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-14 w-px bg-[#3dd68c]"></div><div class="w-1 h-8 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-24 w-px bg-[#3dd68c]"></div><div class="w-1 h-16 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-12 w-px bg-[#f87171]"></div><div class="w-1 h-6 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-28 w-px bg-[#3dd68c]"></div><div class="w-1 h-20 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-16 w-px bg-[#f87171]"></div><div class="w-1 h-10 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-20 w-px bg-[#3dd68c]"></div><div class="w-1 h-14 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-32 w-px bg-[#3dd68c]"></div><div class="w-1 h-22 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-18 w-px bg-[#f87171]"></div><div class="w-1 h-8 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-22 w-px bg-[#3dd68c]"></div><div class="w-1 h-12 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-26 w-px bg-[#3dd68c]"></div><div class="w-1 h-16 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-14 w-px bg-[#f87171]"></div><div class="w-1 h-6 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-30 w-px bg-[#3dd68c]"></div><div class="w-1 h-20 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-20 w-px bg-[#3dd68c]"></div><div class="w-1 h-12 bg-[#3dd68c] rounded-xs"></div></div>
+</div>
+<!-- Volume Histogram Underneath -->
+<div class="h-12 flex items-end justify-between px-2 pt-2 border-t border-[#2a3340]">
+<div class="w-1 h-6 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-8 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-4 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-10 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-5 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-12 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-7 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-9 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-11 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-6 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-8 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-10 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-5 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-12 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-9 bg-surface-bright rounded-xs"></div>
+</div>
+</div>
+</div>
+<!-- Right Chart: Match ACB -->
+<div class="bg-[#161b22] border border-[#2a3340] p-4 rounded flex flex-col h-[380px]">
+<div class="flex justify-between items-center mb-3 pb-2 border-b border-[#2a3340]">
+<div class="flex items-center space-x-3">
+<span class="font-headline-sm text-on-surface">ACB (Match)</span>
+<span class="font-numeric-md text-[#3dd68c]">24.850 đ</span>
+</div>
+<div class="flex space-x-1">
+<span class="px-2 py-0.5 bg-surface-container text-xs font-numeric-sm text-outline rounded border border-outline-variant">90D</span>
+<span class="px-2 py-0.5 bg-surface-container text-xs font-numeric-sm text-outline rounded border border-outline-variant">HOSE</span>
+</div>
+</div>
+<!-- Chart Canvas Simulation -->
+<div class="flex-1 relative flex flex-col justify-between font-numeric-sm text-outline">
+<!-- Y-Axis Labels -->
+<div class="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-40">
+<div class="border-b border-dashed border-outline-variant w-full flex justify-end pr-1 text-[10px]">27.000</div>
+<div class="border-b border-dashed border-outline-variant w-full flex justify-end pr-1 text-[10px]">26.000</div>
+<div class="border-b border-dashed border-outline-variant w-full flex justify-end pr-1 text-[10px]">25.000</div>
+<div class="border-b border-dashed border-outline-variant w-full flex justify-end pr-1 text-[10px]">24.000</div>
+<div class="w-full flex justify-end pr-1 text-[10px]">23.000</div>
+</div>
+<!-- Candlestick representation -->
+<div class="relative z-10 h-[240px] flex items-end justify-between px-2 pt-4">
+<!-- Simulated Candles -->
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-14 w-px bg-[#3dd68c]"></div><div class="w-1 h-8 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-18 w-px bg-[#3dd68c]"></div><div class="w-1 h-10 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-12 w-px bg-[#f87171]"></div><div class="w-1 h-6 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-22 w-px bg-[#3dd68c]"></div><div class="w-1 h-14 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-10 w-px bg-[#3dd68c]"></div><div class="w-1 h-5 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-26 w-px bg-[#3dd68c]"></div><div class="w-1 h-18 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-14 w-px bg-[#f87171]"></div><div class="w-1 h-8 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-18 w-px bg-[#3dd68c]"></div><div class="w-1 h-12 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-30 w-px bg-[#3dd68c]"></div><div class="w-1 h-20 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-16 w-px bg-[#f87171]"></div><div class="w-1 h-7 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-20 w-px bg-[#3dd68c]"></div><div class="w-1 h-10 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-24 w-px bg-[#3dd68c]"></div><div class="w-1 h-15 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-12 w-px bg-[#f87171]"></div><div class="w-1 h-5 bg-[#f87171] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-28 w-px bg-[#3dd68c]"></div><div class="w-1 h-18 bg-[#3dd68c] rounded-xs"></div></div>
+<div class="w-1 h-full flex flex-col justify-end items-center relative"><div class="absolute h-18 w-px bg-[#3dd68c]"></div><div class="w-1 h-10 bg-[#3dd68c] rounded-xs"></div></div>
+</div>
+<!-- Volume Histogram Underneath -->
+<div class="h-12 flex items-end justify-between px-2 pt-2 border-t border-[#2a3340]">
+<div class="w-1 h-5 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-7 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-3 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-9 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-4 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-11 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-6 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-8 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-10 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-5 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-7 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-9 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-4 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-11 bg-surface-bright rounded-xs"></div>
+<div class="w-1 h-8 bg-surface-bright rounded-xs"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Comparison Metrics Table -->
+<div class="bg-[#161b22] border border-[#2a3340] rounded overflow-hidden">
+<div class="px-4 py-3 bg-surface-container border-b border-[#2a3340] flex justify-between items-center">
+<span class="font-headline-sm text-on-surface">Analytical Comparison Matrix</span>
+<span class="font-label text-outline">TIER-1 TELEMETRY</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-[#2a3340] text-outline font-label">
+<th class="py-2.5 px-4 font-medium">METRIC / INDICATOR</th>
+<th class="py-2.5 px-4 font-medium text-right">VCB (REF)</th>
+<th class="py-2.5 px-4 font-medium text-right">ACB (MATCH)</th>
+<th class="py-2.5 px-4 font-medium text-right">VARIANCE / SPREAD</th>
+<th class="py-2.5 px-4 font-medium">STATUS</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#2a3340] font-numeric-md">
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="py-2.5 px-4 text-on-surface font-body-md">P/E Ratio (Trailing)</td>
+<td class="py-2.5 px-4 text-right">14.2x</td>
+<td class="py-2.5 px-4 text-right">9.8x</td>
+<td class="py-2.5 px-4 text-right text-[#3dd68c]">-4.4x</td>
+<td class="py-2.5 px-4 text-outline">Normal</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="py-2.5 px-4 text-on-surface font-body-md">P/B Ratio</td>
+<td class="py-2.5 px-4 text-right">2.8x</td>
+<td class="py-2.5 px-4 text-right">1.6x</td>
+<td class="py-2.5 px-4 text-right text-[#3dd68c]">-1.2x</td>
+<td class="py-2.5 px-4 text-outline">Discounted</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="py-2.5 px-4 text-on-surface font-body-md">90d Correlation Coefficient</td>
+<td class="py-2.5 px-4 text-right font-bold text-primary" colspan="3">0.9134</td>
+<td class="py-2.5 px-4 text-[#3dd68c]">High Sync</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="py-2.5 px-4 text-on-surface font-body-md">Annualized Volatility</td>
+<td class="py-2.5 px-4 text-right">18.4%</td>
+<td class="py-2.5 px-4 text-right">21.2%</td>
+<td class="py-2.5 px-4 text-right text-[#f87171]">+2.8%</td>
+<td class="py-2.5 px-4 text-outline">Elevated ACB</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="py-2.5 px-4 text-on-surface font-body-md">Liquidity Spread (Avg Daily Volume)</td>
+<td class="py-2.5 px-4 text-right">412.500.000 đ</td>
+<td class="py-2.5 px-4 text-right">385.200.000 đ</td>
+<td class="py-2.5 px-4 text-right">-27.300.000 đ</td>
+<td class="py-2.5 px-4 text-outline">Balanced</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+</div>
+</body></html>
