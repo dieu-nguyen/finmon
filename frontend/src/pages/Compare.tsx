@@ -1,8 +1,31 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Bar, type PatternHits } from "../api";
-import { EmptyState } from "../design-system";
+import { EmptyState, formatDong } from "../design-system";
 import { PriceChart } from "../chart/PriceChart";
+
+function tone(bars: Bar[]): "up" | "down" | "muted" {
+  const first = bars[0]?.close;
+  const last = bars.at(-1)?.close;
+  if (first == null || last == null || first === last) return "muted";
+  return last > first ? "up" : "down";
+}
+
+function ChartCard({ ticker, role, bars }: { ticker: string; role: string; bars: Bar[] }) {
+  const last = bars.at(-1)?.close;
+  const kind = tone(bars);
+  return (
+    <section className="chart-card">
+      <div className="chart-card-head">
+        <strong>
+          {ticker || "—"} ({role})
+        </strong>
+        {last != null ? <span className={`tone-${kind}`}>{formatDong(last)} đ</span> : null}
+      </div>
+      <PriceChart ticker={ticker} bars={bars} />
+    </section>
+  );
+}
 
 export function Compare() {
   const { patternId = "", ticker = "" } = useParams();
@@ -42,23 +65,40 @@ export function Compare() {
   const hit = hits?.hits.find((row) => row.ticker === match);
   return (
     <div>
-      <Link to="/scans" style={{ color: "var(--accent)" }}>
+      <Link to="/scans" className="back-link">
         Scans
       </Link>
-      <h1 style={{ fontSize: "var(--fs-lg)", fontWeight: 500 }}>
-        {hits?.reference ?? "—"} vs {match}
-        {hit ? <span style={{ fontFamily: "var(--font-num)" }}> · {hit.score.toFixed(4)}</span> : null}
-      </h1>
       {hit ? (
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)", marginBottom: 12 }}>
-          {hit.window_start} – {hit.window_end}
+        <div className="compare-head">
+          <div className="compare-pair">
+            <div>
+              <div className="compare-kicker">Reference</div>
+              <div className="compare-ticker">{hits?.reference ?? "—"}</div>
+            </div>
+            <span className="compare-vs">↔</span>
+            <div>
+              <div className="compare-kicker">Match</div>
+              <div className="compare-ticker">{match}</div>
+            </div>
+          </div>
+          <div>
+            <div className="compare-kicker">Score</div>
+            <div className="compare-score">{hit.score.toFixed(4)}</div>
+            <div className="compare-window">
+              {hit.window_start} – {hit.window_end}
+            </div>
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <h1 className="page-title" style={{ marginTop: 12 }}>
+          {hits?.reference ?? "—"} vs {match}
+        </h1>
+      )}
       {err ? <EmptyState text={err} /> : null}
       {hit ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
-          <PriceChart ticker={hits?.reference ?? ""} bars={left} />
-          <PriceChart ticker={match} bars={right} />
+        <div className="compare-grid">
+          <ChartCard ticker={hits?.reference ?? ""} role="Reference" bars={left} />
+          <ChartCard ticker={match} role="Match" bars={right} />
         </div>
       ) : null}
     </div>

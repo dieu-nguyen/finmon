@@ -1,21 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type SymbolPage, type SymbolRow } from "../api";
-import { Banner, Button, ChangeCell, Checkbox, EmptyState, Input, PriceCell, Select, Table, Tabs } from "../design-system";
+import { Banner, Button, ChangeCell, Checkbox, EmptyState, Input, PriceCell, Segmented, Table, formatDong } from "../design-system";
+import { PinIcon } from "../design-system/icons";
 
 type Segment = "stock" | "etf" | "index";
 
-const SEGMENT_LABEL: Record<Segment, string> = {
-  stock: "Stocks",
-  etf: "Funds",
-  index: "Indices",
-};
-
-const LABEL_SEGMENT: Record<string, Segment> = {
-  Stocks: "stock",
-  Funds: "etf",
-  Indices: "index",
-};
+const BOARDS = [
+  { value: "", label: "All" },
+  { value: "HOSE", label: "HOSE" },
+  { value: "HNX", label: "HNX" },
+  { value: "UPCOM", label: "UPCOM" },
+];
 
 export function displayBoard(board: string): string {
   return board === "UPX" ? "UPCOM" : board;
@@ -27,6 +23,10 @@ function typeHint(segment: Segment, row: SymbolRow): string | null {
   if (row.type === "index") return "Index";
   if (row.type === "bond") return "Bond";
   return row.type;
+}
+
+function formatCount(n: number): string {
+  return new Intl.NumberFormat("vi-VN").format(n);
 }
 
 export function Market() {
@@ -107,7 +107,23 @@ export function Market() {
 
   return (
     <div>
-      <h1 style={{ fontSize: "var(--fs-lg)", fontWeight: 500 }}>Market</h1>
+      <div className="page-head">
+        <h1 className="page-title">Market</h1>
+        <Segmented
+          label="Segment"
+          value={segment}
+          options={[
+            { value: "stock", label: "Stocks" },
+            { value: "etf", label: "Funds" },
+            { value: "index", label: "Indices" },
+          ]}
+          onChange={(value) => {
+            const next = value as Segment;
+            setSegment(next);
+            if (next !== "stock") setBoard("");
+          }}
+        />
+      </div>
       {err ? (
         <Banner kind="error">
           {err}{" "}
@@ -121,109 +137,89 @@ export function Market() {
           </Button>
         </Banner>
       ) : null}
-      <div style={{ margin: "var(--space-3) 0" }}>
-        <Tabs
-          tabs={["Stocks", "Funds", "Indices"]}
-          value={SEGMENT_LABEL[segment]}
-          onChange={(label) => {
-            const next = LABEL_SEGMENT[label] ?? "stock";
-            setSegment(next);
-            if (next !== "stock") setBoard("");
-          }}
-        />
-      </div>
-      <div style={{ display: "flex", gap: "var(--space-2)", margin: "var(--space-3) 0" }}>
-        {segment === "stock" ? (
-          <Select value={board} onChange={(e) => setBoard(e.target.value)} aria-label="Board">
-            <option value="">All</option>
-            <option value="HOSE">HOSE</option>
-            <option value="HNX">HNX</option>
-            <option value="UPCOM">UPCOM</option>
-          </Select>
-        ) : null}
-        <Input placeholder="Search ticker or name" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div className="toolbar">
+        {segment === "stock" ? <Segmented label="Board" value={board} options={BOARDS} onChange={setBoard} /> : null}
+        <Input className="search-input" placeholder="Search ticker or name" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
+        <label className="check-label">
           <Checkbox checked={onlyWatch} onChange={(e) => setOnlyWatch(e.target.checked)} />
           Watchlist
         </label>
       </div>
-      {widened ? <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>These matches are outside the current filter.</p> : null}
+      {widened ? <p className="filter-note">These matches are outside the current filter.</p> : null}
       {page.items.length === 0 && !err ? <EmptyState text="No symbols" /> : null}
       {page.items.length > 0 ? (
-        <Table>
-          <thead>
-            <tr>
-              {["Ticker", "Name", "Board", "Last", "Change", "Volume", "Pin"].map((h) => (
-                <th
-                  key={h}
-                  style={{
-                    textAlign: h === "Last" || h === "Change" || h === "Volume" ? "right" : "left",
-                    borderBottom: "1px solid var(--border)",
-                    height: 36,
-                    position: "sticky",
-                    top: 0,
-                    background: "var(--bg-elev)",
-                  }}
-                >
-                  {h}
+        <div className="table-panel">
+          <Table className="heads-up sticky-head market-table">
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Name</th>
+                <th>Board</th>
+                <th className="num">Last</th>
+                <th className="num">Change</th>
+                <th className="num">Volume</th>
+                <th className="pin-col">
+                  <span className="sr-only">Pin</span>
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {page.items.map((r) => {
-              const hint = widened ? typeHint(segment, r) : null;
-              return (
-                <tr
-                  key={r.ticker}
-                  onClick={() => nav(`/symbol/${r.ticker}`)}
-                  style={{ height: 36, cursor: "pointer" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  <td style={{ fontFamily: "var(--font-num)" }}>{r.ticker}</td>
-                  <td>
-                    {r.name}
-                    {hint ? <span style={{ color: "var(--text-muted)" }}> · {hint}</span> : null}
-                  </td>
-                  <td>{displayBoard(r.board)}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <PriceCell value={r.last} />
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <ChangeCell value={r.change} />
-                  </td>
-                  <td style={{ textAlign: "right", fontFamily: "var(--font-num)" }}>{r.volume ?? "—"}</td>
-                  <td>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (r.watchlist) await api.unpin(r.ticker);
-                        else await api.pin(r.ticker);
-                        setReloadKey((n) => n + 1);
-                      }}
-                      style={{ background: "none", border: "1px solid var(--border)", color: "var(--text)", height: 32 }}
-                    >
-                      {r.watchlist ? "Unpin" : "Pin to watchlist"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
+              </tr>
+            </thead>
+            <tbody>
+              {page.items.map((r) => {
+                const hint = widened ? typeHint(segment, r) : null;
+                return (
+                  <tr key={r.ticker} onClick={() => nav(`/symbol/${r.ticker}`)}>
+                    <td className="ticker-cell">{r.ticker}</td>
+                    <td>
+                      {r.name}
+                      {hint ? <span style={{ color: "var(--text-muted)" }}> · {hint}</span> : null}
+                    </td>
+                    <td>
+                      <span className="board-pill">{displayBoard(r.board)}</span>
+                    </td>
+                    <td className="num">
+                      <PriceCell value={r.last} />
+                    </td>
+                    <td className="num">
+                      <ChangeCell value={r.change} />
+                    </td>
+                    <td className="num">{formatDong(r.volume)}</td>
+                    <td className="pin-col">
+                      <button
+                        type="button"
+                        className={r.watchlist ? "pin-btn on" : "pin-btn"}
+                        aria-label={r.watchlist ? "Unpin" : "Pin"}
+                        title={r.watchlist ? "Unpin" : "Pin"}
+                        aria-pressed={r.watchlist}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (r.watchlist) await api.unpin(r.ticker);
+                          else await api.pin(r.ticker);
+                          setReloadKey((n) => n + 1);
+                        }}
+                      >
+                        <PinIcon />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </div>
       ) : null}
       {searching ? null : (
-        <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginTop: "var(--space-3)" }}>
-          <Button variant="ghost" disabled={offset <= 0} onClick={() => setOffset((n) => Math.max(0, n - 50))}>
-            Previous
-          </Button>
-          <Button variant="ghost" disabled={offset + page.limit >= page.total} onClick={() => setOffset((n) => n + 50)}>
-            Next
-          </Button>
-          <span style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)", fontFamily: "var(--font-num)" }}>
-            {from}–{to} of {page.total}
+        <div className="pager">
+          <span>
+            {from}–{to} of {formatCount(page.total)}
           </span>
+          <div className="pager-actions">
+            <Button variant="ghost" disabled={offset <= 0} onClick={() => setOffset((n) => Math.max(0, n - 50))}>
+              Previous
+            </Button>
+            <Button variant="ghost" disabled={offset + page.limit >= page.total} onClick={() => setOffset((n) => n + 50)}>
+              Next
+            </Button>
+          </div>
         </div>
       )}
     </div>

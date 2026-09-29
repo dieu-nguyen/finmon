@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type Bar, type SymbolRow } from "../api";
 import { displayBoard } from "./Market";
-import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Tabs, Toast } from "../design-system";
+import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Spinner, Tabs, Toast } from "../design-system";
 import { CompanyPanel } from "./CompanyPanel";
 import { DailyChart } from "../chart/DailyChart";
 import type { Drawing, DrawingTool } from "../chart/drawings";
@@ -79,76 +79,100 @@ export function SymbolPage() {
     }, 300);
   };
 
+  const last = row?.last ?? bars.at(-1)?.close ?? null;
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: "var(--space-4)", minHeight: 0 }}>
-      <div>
-        <div style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
-          <h1 style={{ fontFamily: "var(--font-num)", fontSize: "var(--fs-xl)", margin: 0 }}>{t}</h1>
-          <PriceCell value={row?.last ?? bars.at(-1)?.close ?? null} />
-          <ChangeCell value={row?.change ?? null} />
-          <span style={{ color: "var(--text-muted)" }}>{row?.board ? displayBoard(row.board) : ""}</span>
+    <div className="symbol-page">
+      <div className="quote">
+        <div className="quote-id">
+          <h1 className="quote-ticker">{t}</h1>
+          {row?.board ? <span className="board-pill">{displayBoard(row.board)}</span> : null}
+          {row?.name ? <span className="quote-name">{row.name}</span> : null}
         </div>
-        {err ? <Banner kind="error">{err}</Banner> : null}
-        {bars.length === 0 ? (
-          <EmptyState text={`No daily bars for ${t}`} />
-        ) : (
-          <DailyChart
-            ticker={t}
-            bars={bars}
-            sma20={sma}
-            showSma={showSma}
-            onToggleSma={() => setShowSma((v) => !v)}
-            drawings={drawings}
-            tool={tool}
-            onTool={setTool}
-            onDrawings={persistDrawings}
-          />
-        )}
+        <div className="quote-px">
+          <PriceCell value={last} />
+          <ChangeCell value={row?.change ?? null} />
+        </div>
       </div>
-      <aside>
-        <Tabs tabs={["Note", "Company", "Alert"]} value={tab} onChange={setTab} />
-        {tab === "Note" ? (
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              style={{ minHeight: 240, background: "var(--bg-elev)", border: "1px solid var(--border)", color: "var(--text)", padding: 8 }}
-            />
-            <Button
-              onClick={async () => {
-                await api.savePageNote(t, note);
-                setToast("Saved");
-                window.setTimeout(() => setToast(null), 3000);
-              }}
-            >
-              Save note
-            </Button>
+      {err ? <Banner kind="error">{err}</Banner> : null}
+      {tab === "Company" ? (
+        <div className="company-screen">
+          <Tabs stretch tabs={["Note", "Company", "Alert"]} value={tab} onChange={setTab} />
+          <div style={{ marginTop: 16 }}>
+            {company ? <CompanyPanel payload={company} /> : company === null ? <EmptyState text="Company data unavailable" /> : <Spinner />}
           </div>
-        ) : null}
-        {tab === "Company" ? (company ? <CompanyPanel payload={company} /> : company === null ? <EmptyState text="Company data unavailable" /> : null) : null}
-        {tab === "Alert" ? (
-          <form
-            style={{ display: "grid", gap: 8, marginTop: 12 }}
-            onSubmit={async (e) => {
-              e.preventDefault();
-              await api.createAlert({ ticker: t, op, price: Number(price), mode });
-              setToast("Saved");
-              window.setTimeout(() => setToast(null), 3000);
-            }}
-          >
-            <Select value={op} onChange={(e) => setOp(e.target.value)}>
-              <option value="gte">gte</option>
-              <option value="lte">lte</option>
-            </Select>
-            <Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (đồng)" />
-            <Select value={mode} onChange={(e) => setMode(e.target.value)}>
-              <option value="once">once</option>
-              <option value="repeat">repeat</option>
-            </Select>
-            <Button type="submit">Add alert</Button>
-          </form>
-        ) : null}
-      </aside>
+        </div>
+      ) : (
+        <div className="symbol-split">
+          <div className="chart-frame">
+            {bars.length === 0 ? (
+              <EmptyState text={`No daily bars for ${t}`} />
+            ) : (
+              <DailyChart
+                ticker={t}
+                bars={bars}
+                sma20={sma}
+                showSma={showSma}
+                onToggleSma={() => setShowSma((v) => !v)}
+                drawings={drawings}
+                tool={tool}
+                onTool={setTool}
+                onDrawings={persistDrawings}
+              />
+            )}
+          </div>
+          <aside className="rail">
+            <Tabs stretch tabs={["Note", "Company", "Alert"]} value={tab} onChange={setTab} />
+            <div className="rail-body">
+              {tab === "Note" ? (
+                <>
+                  <textarea className="note-box" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
+                  <Button
+                    onClick={async () => {
+                      await api.savePageNote(t, note);
+                      setToast("Saved");
+                      window.setTimeout(() => setToast(null), 3000);
+                    }}
+                  >
+                    Save note
+                  </Button>
+                </>
+              ) : null}
+              {tab === "Alert" ? (
+                <form
+                  className="field-grid"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    await api.createAlert({ ticker: t, op, price: Number(price), mode });
+                    setToast("Saved");
+                    window.setTimeout(() => setToast(null), 3000);
+                  }}
+                >
+                  <label className="field">
+                    Condition
+                    <Select value={op} onChange={(e) => setOp(e.target.value)} aria-label="Condition">
+                      <option value="gte">≥</option>
+                      <option value="lte">≤</option>
+                    </Select>
+                  </label>
+                  <label className="field">
+                    Price
+                    <Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (đồng)" aria-label="Price" />
+                  </label>
+                  <label className="field">
+                    Frequency
+                    <Select value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Frequency">
+                      <option value="once">once</option>
+                      <option value="repeat">repeat</option>
+                    </Select>
+                  </label>
+                  <Button type="submit">Add alert</Button>
+                </form>
+              ) : null}
+            </div>
+          </aside>
+        </div>
+      )}
       {toast ? <Toast text={toast} /> : null}
     </div>
   );

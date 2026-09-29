@@ -4,7 +4,7 @@ type Variant = "primary" | "ghost" | "danger";
 
 export function Button({ variant = "primary", children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
   const styles: Record<Variant, CSSProperties> = {
-    primary: { background: "var(--accent)", color: "var(--bg)", border: "1px solid var(--accent)" },
+    primary: { background: "var(--accent)", color: "var(--bg)", border: "1px solid var(--accent)", fontWeight: 600 },
     ghost: { background: "transparent", color: "var(--text)", border: "1px solid var(--border)" },
     danger: { background: "transparent", color: "var(--down)", border: "1px solid var(--down)" },
   };
@@ -15,6 +15,7 @@ export function Button({ variant = "primary", children, ...rest }: ButtonHTMLAtt
         height: "var(--control-h)",
         padding: "0 var(--space-3)",
         borderRadius: "var(--radius)",
+        fontSize: "var(--fs-sm)",
         cursor: rest.disabled ? "not-allowed" : "pointer",
         opacity: rest.disabled ? 0.4 : 1,
         ...styles[variant],
@@ -29,12 +30,17 @@ export function Button({ variant = "primary", children, ...rest }: ButtonHTMLAtt
 export function IconButton({ label, children, active, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean }) {
   return (
     <button
+      type="button"
       aria-label={label}
       title={label}
       {...rest}
       style={{
         width: 32,
         height: 32,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 0,
         border: "1px solid var(--border)",
         borderRadius: "var(--radius)",
         background: active ? "var(--accent)" : "transparent",
@@ -93,23 +99,48 @@ export function Checkbox(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input type="checkbox" {...props} style={{ width: 16, height: 16, accentColor: "var(--accent)", ...props.style }} />;
 }
 
-export function Tabs({ tabs, value, onChange }: { tabs: string[]; value: string; onChange: (v: string) => void }) {
+export function Tabs({ tabs, value, onChange, stretch }: { tabs: string[]; value: string; onChange: (v: string) => void; stretch?: boolean }) {
   return (
-    <div style={{ display: "flex", gap: "var(--space-4)", borderBottom: "1px solid var(--border)" }}>
+    <div style={{ display: "flex", gap: stretch ? 0 : "var(--space-4)", borderBottom: "1px solid var(--border)" }}>
       {tabs.map((t) => (
         <button
           key={t}
+          type="button"
           onClick={() => onChange(t)}
           style={{
+            flex: stretch ? 1 : undefined,
             background: "none",
             border: "none",
             borderBottom: value === t ? "2px solid var(--accent)" : "2px solid transparent",
             color: value === t ? "var(--accent)" : "var(--text-muted)",
-            height: 32,
+            fontWeight: value === t ? 600 : 400,
+            height: 36,
             cursor: "pointer",
           }}
         >
           {t}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Segmented({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="segment" role="group" aria-label={label}>
+      {options.map((opt) => (
+        <button key={opt.label} type="button" aria-pressed={value === opt.value} className={value === opt.value ? "segment-btn on" : "segment-btn"} onClick={() => onChange(opt.value)}>
+          {opt.label}
         </button>
       ))}
     </div>
@@ -125,9 +156,9 @@ export function Badge({ kind, children }: { kind: "up" | "down" | "muted" | "war
   );
 }
 
-export function Table({ children, ...rest }: TableHTMLAttributes<HTMLTableElement>) {
+export function Table({ children, className, ...rest }: TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <table {...rest} style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-sm)", ...rest.style }}>
+    <table {...rest} className={["terminal-table", className].filter(Boolean).join(" ")} style={{ width: "100%", borderCollapse: "collapse", ...rest.style }}>
       {children}
     </table>
   );

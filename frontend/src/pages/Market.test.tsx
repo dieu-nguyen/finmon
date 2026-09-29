@@ -48,7 +48,7 @@ describe("Market search", () => {
         <Market />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByLabelText("Board"), { target: { value: "HNX" } });
+    fireEvent.click(screen.getByRole("button", { name: "HNX" }));
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "E1VFVN30" } });
     expect(await screen.findByText("E1VFVN30")).toBeInTheDocument();
     expect(screen.getByText("These matches are outside the current filter.")).toBeInTheDocument();

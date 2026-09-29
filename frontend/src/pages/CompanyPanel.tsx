@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { EmptyState, Table } from "../design-system";
 
 type Row = Record<string, unknown>;
@@ -186,23 +185,24 @@ function overviewFacts(profile: Row | null): Fact[] {
   return facts;
 }
 
-function StatementSection({ title, unit, rows, specs, ratio }: { title: string; unit?: string; rows: Row[]; specs: LineSpec[]; ratio?: boolean }) {
+function StatementSection({ title, rows, specs, ratio }: { title: string; rows: Row[]; specs: LineSpec[]; ratio?: boolean }) {
   const { years, lines } = metricLines(rows, specs);
   if (lines.length === 0) return null;
   const format = ratio ? formatRatio : formatAmount;
+  const annual = years.length > 0 && years.every((year) => /^(19|20)\d{2}$/.test(year));
   return (
-    <section style={{ display: "grid", gap: 4 }}>
-      <h2 style={{ fontSize: "var(--fs-sm)", fontWeight: 600, margin: 0, color: "var(--text-muted)" }}>
+    <section className="statement-card">
+      <h2 className="statement-head">
         {title}
-        {unit ? <span style={{ fontWeight: 400 }}> · {unit}</span> : null}
+        {annual ? <span>Annual</span> : null}
       </h2>
-      <div style={{ overflowX: "auto" }}>
+      <div className="statement-scroll">
         <Table>
           <thead>
             <tr>
-              <th style={headStyle(true)} />
+              <th>Metric</th>
               {years.map((year) => (
-                <th key={year} style={headStyle(false)}>
+                <th key={year} className="num">
                   {year}
                 </th>
               ))}
@@ -210,10 +210,10 @@ function StatementSection({ title, unit, rows, specs, ratio }: { title: string; 
           </thead>
           <tbody>
             {lines.map((line) => (
-              <tr key={line.label} style={{ height: 32 }}>
-                <td style={{ position: "sticky", left: 0, background: "var(--bg)", paddingRight: 8, whiteSpace: "nowrap" }}>{line.label}</td>
+              <tr key={line.label}>
+                <td className="metric-label">{line.label}</td>
                 {years.map((year) => (
-                  <td key={year} style={{ textAlign: "right", fontFamily: "var(--font-num)", paddingLeft: 8, whiteSpace: "nowrap" }}>
+                  <td key={year} className="num">
                     {line.values[year] == null ? "—" : format(line.values[year] as number)}
                   </td>
                 ))}
@@ -224,22 +224,6 @@ function StatementSection({ title, unit, rows, specs, ratio }: { title: string; 
       </div>
     </section>
   );
-}
-
-function headStyle(label: boolean): CSSProperties {
-  return {
-    textAlign: label ? "left" : "right",
-    borderBottom: "1px solid var(--border)",
-    height: 32,
-    color: "var(--text-muted)",
-    fontWeight: 500,
-    fontSize: "var(--fs-xs)",
-    whiteSpace: "nowrap",
-    paddingLeft: label ? 0 : 8,
-    position: label ? "sticky" : undefined,
-    left: label ? 0 : undefined,
-    background: "var(--bg)",
-  };
 }
 
 export function CompanyPanel({ payload }: { payload: Record<string, unknown> }) {
@@ -259,29 +243,44 @@ export function CompanyPanel({ payload }: { payload: Record<string, unknown> }) 
 
   const inline = facts.filter((fact) => !fact.block);
   const blocks = facts.filter((fact) => fact.block);
+  const money =
+    metricLines(income, INCOME).lines.length > 0 || metricLines(balance, BALANCE).lines.length > 0 || metricLines(cashflow, CASHFLOW).lines.length > 0;
+  const numericLabels = new Set(["Shares outstanding", "Market cap"]);
 
   return (
-    <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-      {inline.length > 0 ? (
-        <dl style={{ display: "grid", gridTemplateColumns: "128px 1fr", gap: "4px 8px", margin: 0, fontSize: "var(--fs-sm)" }}>
-          {inline.map((fact) => (
-            <div key={fact.label} style={{ display: "contents" }}>
-              <dt style={{ color: "var(--text-muted)", margin: 0 }}>{fact.label}</dt>
-              <dd style={{ margin: 0, fontFamily: fact.label === "Shares outstanding" || fact.label === "Market cap" ? "var(--font-num)" : undefined }}>{fact.value}</dd>
-            </div>
+    <div className="company">
+      {inline.length > 0 || blocks.length > 0 ? (
+        <section className="overview">
+          {inline.length > 0 ? (
+            <dl className="fact-grid">
+              {inline.map((fact) => (
+                <div key={fact.label}>
+                  <dt>{fact.label}</dt>
+                  <dd className={numericLabels.has(fact.label) ? "num" : undefined}>{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {blocks.map((fact) => (
+            <p key={fact.label} className="business">
+              {fact.value}
+            </p>
           ))}
-        </dl>
+        </section>
       ) : null}
-      {blocks.map((fact) => (
-        <div key={fact.label} style={{ display: "grid", gap: 2, fontSize: "var(--fs-sm)" }}>
-          <div style={{ color: "var(--text-muted)" }}>{fact.label}</div>
-          <div>{fact.value}</div>
+      {money ? (
+        <div className="unit-row">
+          <span className="unit-pill">Unit: đồng</span>
         </div>
-      ))}
-      <StatementSection title="Income" unit="đồng" rows={income} specs={INCOME} />
-      <StatementSection title="Balance sheet" unit="đồng" rows={balance} specs={BALANCE} />
-      <StatementSection title="Cash flow" unit="đồng" rows={cashflow} specs={CASHFLOW} />
-      <StatementSection title="Ratios" rows={ratios} specs={RATIOS} ratio />
+      ) : null}
+      {hasStatements ? (
+        <div className="company-grid">
+          <StatementSection title="Income Statement" rows={income} specs={INCOME} />
+          <StatementSection title="Balance Sheet" rows={balance} specs={BALANCE} />
+          <StatementSection title="Cash Flow" rows={cashflow} specs={CASHFLOW} />
+          <StatementSection title="Financial Ratios" rows={ratios} specs={RATIOS} ratio />
+        </div>
+      ) : null}
     </div>
   );
 }

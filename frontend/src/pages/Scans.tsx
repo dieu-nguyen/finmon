@@ -92,10 +92,35 @@ export function Scans() {
 
   return (
     <div>
-      <h1 style={{ fontSize: "var(--fs-lg)", fontWeight: 500 }}>Scans</h1>
+      <div className="page-head">
+        <h1 className="page-title">Scans</h1>
+      </div>
       {err ? <Banner kind="error">{err}</Banner> : null}
+      {patterns.length === 0 ? <EmptyState text="No patterns yet" /> : null}
+      <div className="chips">
+        {patterns.map((row) => (
+          <button key={row.id} type="button" className={row.id === selected ? "chip on" : "chip"} onClick={() => choose(row)}>
+            {row.name}
+            {row.enabled ? "" : " (off)"}
+            <span className="chip-meta"> · {row.spec.min_score}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          className="chip"
+          onClick={() => {
+            setSelected(null);
+            setHits(null);
+            setForm(emptyForm);
+            setRefQ("");
+            setRefHits([]);
+          }}
+        >
+          New
+        </button>
+      </div>
       <form
-        style={{ display: "grid", gap: 8, maxWidth: 420, margin: "var(--space-3) 0" }}
+        className="form-panel"
         onSubmit={async (e) => {
           e.preventDefault();
           setErr(null);
@@ -116,19 +141,42 @@ export function Scans() {
           }
         }}
       >
-        <Input placeholder="Name" aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-        <Input
-          placeholder="Reference ticker"
-          aria-label="Reference"
-          value={refQ || form.reference}
-          onChange={(e) => {
-            setRefQ(e.target.value);
-            setForm({ ...form, reference: e.target.value.toUpperCase() });
-          }}
-          required
-        />
+        <div className="form-row">
+          <label className="field">
+            Name
+            <Input aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ background: "var(--bg)", minWidth: 200 }} />
+          </label>
+          <label className="field">
+            Reference ticker
+            <Input
+              aria-label="Reference"
+              value={refQ || form.reference}
+              onChange={(e) => {
+                setRefQ(e.target.value);
+                setForm({ ...form, reference: e.target.value.toUpperCase() });
+              }}
+              required
+              style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
+            />
+          </label>
+          <label className="field">
+            Minimum score
+            <Input aria-label="Minimum score" value={form.minScore} onChange={(e) => setForm({ ...form, minScore: e.target.value })} style={{ background: "var(--bg)", width: 120, fontFamily: "var(--font-num)", textAlign: "right" }} />
+          </label>
+          <label className="field">
+            Top K
+            <Input aria-label="Top K" value={form.topK} onChange={(e) => setForm({ ...form, topK: e.target.value })} style={{ background: "var(--bg)", width: 100, fontFamily: "var(--font-num)", textAlign: "right" }} />
+          </label>
+          <label className="check-label">
+            <Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+            Enabled
+          </label>
+          <div className="form-actions">
+            <Button type="submit">Save</Button>
+          </div>
+        </div>
         {refHits.length > 0 ? (
-          <div style={{ border: "1px solid var(--border)", background: "var(--bg-elev)" }}>
+          <div className="suggest" style={{ marginTop: 8 }}>
             {refHits.map((row) => (
               <button
                 key={row.ticker}
@@ -138,99 +186,57 @@ export function Scans() {
                   setRefQ("");
                   setRefHits([]);
                 }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  background: "none",
-                  border: "none",
-                  color: "var(--text)",
-                  height: 32,
-                  cursor: "pointer",
-                }}
               >
-                <span style={{ fontFamily: "var(--font-num)" }}>{row.ticker}</span> {row.name}
+                <span className="ticker-cell">{row.ticker}</span> {row.name}
               </button>
             ))}
           </div>
         ) : null}
-        <Input aria-label="Minimum score" value={form.minScore} onChange={(e) => setForm({ ...form, minScore: e.target.value })} />
-        <Input aria-label="Top K" value={form.topK} onChange={(e) => setForm({ ...form, topK: e.target.value })} />
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-          Enabled
-        </label>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Button type="submit">Save</Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              setSelected(null);
-              setHits(null);
-              setForm(emptyForm);
-              setRefQ("");
-              setRefHits([]);
-            }}
-          >
-            New
-          </Button>
-        </div>
       </form>
-      {patterns.length === 0 ? <EmptyState text="No patterns yet" /> : null}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
-        {patterns.map((row) => (
-          <button
-            key={row.id}
-            onClick={() => choose(row)}
-            style={{
-              height: 32,
-              background: row.id === selected ? "var(--bg-selected)" : "transparent",
-              color: "var(--text)",
-              border: "1px solid var(--border)",
-              borderLeft: row.id === selected ? "2px solid var(--accent)" : "1px solid var(--border)",
-              cursor: "pointer",
-              padding: "0 var(--space-3)",
-            }}
-          >
-            {row.name}
-            {row.enabled ? "" : " (off)"}
-          </button>
-        ))}
-      </div>
       {hits ? (
-        <div>
-          <div style={{ marginBottom: 8 }}>
-            <span style={{ fontFamily: "var(--font-num)" }}>{hits.reference || "—"}</span>
-            {hits.as_of ? <span style={{ color: "var(--text-muted)" }}> · as of {hits.as_of}</span> : null}
+        <div className="table-panel">
+          <div className="hits-head">
+            <div className="hits-ref">
+              Reference
+              <span className="ticker-cell" style={{ textTransform: "none", letterSpacing: 0, fontSize: 14 }}>
+                {hits.reference || "—"}
+              </span>
+            </div>
+            {hits.as_of ? <span className="board-pill">as of {hits.as_of}</span> : null}
           </div>
           {hits.as_of == null ? <EmptyState text="No successful run yet" /> : null}
           {hits.as_of != null && hits.reference_compared === false ? <EmptyState text="Reference was not compared" /> : null}
-          {hits.as_of != null && hits.reference_compared !== false && hits.hits.length === 0 ? (
-            <EmptyState text="No names at or above the floor" />
-          ) : null}
+          {hits.as_of != null && hits.reference_compared !== false && hits.hits.length === 0 ? <EmptyState text="No names at or above the floor" /> : null}
           {hits.hits.length > 0 ? (
-            <Table>
+            <Table className="heads-up">
               <thead>
                 <tr>
-                  {["Ticker", "Name", "Score", "As of"].map((h) => (
-                    <th key={h} style={{ textAlign: h === "Score" ? "right" : "left", borderBottom: "1px solid var(--border)", height: 36 }}>
-                      {h}
-                    </th>
-                  ))}
+                  <th>Ticker</th>
+                  <th>Name</th>
+                  <th className="num">Score</th>
+                  <th>As of</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {hits.hits.map((hit) => (
-                  <tr key={hit.ticker} style={{ height: 36 }}>
-                    <td style={{ fontFamily: "var(--font-num)" }}>
-                      <Link to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`} style={{ color: "var(--accent)" }}>
-                        {hit.ticker}
-                      </Link>
+                  <tr key={hit.ticker}>
+                    <td className="ticker-cell">
+                      <Link to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`}>{hit.ticker}</Link>
                     </td>
                     <td>{hit.name}</td>
-                    <td style={{ textAlign: "right", fontFamily: "var(--font-num)" }}>{hit.score.toFixed(4)}</td>
-                    <td style={{ fontFamily: "var(--font-num)" }}>{hit.window_end}</td>
+                    <td className="score-cell">
+                      <span className="score-num">{hit.score.toFixed(4)}</span>
+                      <span className="score-bar" aria-hidden="true">
+                        <span style={{ width: `${Math.max(0, Math.min(100, hit.score * 100))}%` }} />
+                      </span>
+                    </td>
+                    <td className="ticker-cell">{hit.window_end}</td>
+                    <td className="center">
+                      <Link className="text-btn" to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`}>
+                        Compare
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
