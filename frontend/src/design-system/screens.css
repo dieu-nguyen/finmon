@@ -340,20 +340,69 @@ h1, h2, h3 { margin: 0; }
 .ohlc b { color: var(--text); font-weight: 500; }
 .ohlc .up { color: var(--up); }
 .ohlc .down { color: var(--down); }
-.sma-chip {
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: var(--fs-sm);
+.indicator-picker {
+  position: relative;
+  flex-shrink: 0;
 }
-.sma-chip.on {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-muted);
+.indicator-picker-input {
+  height: var(--control-h);
+  width: 188px;
+  padding: 0 28px 0 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  outline: none;
+}
+.indicator-picker-input[readonly] { cursor: pointer; }
+.indicator-picker-input:focus { box-shadow: 0 0 0 2px var(--accent); }
+.indicator-chevron {
+  position: absolute;
+  right: 10px;
+  top: 13px;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--text-muted);
+  pointer-events: none;
+}
+.indicator-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 220px;
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.indicator-option {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.indicator-option.is-active { background: var(--bg-hover); }
+.indicator-option[aria-selected="true"] { color: var(--accent); }
+.indicator-empty {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
 }
 .rail {
   display: flex;

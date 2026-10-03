@@ -6,14 +6,24 @@ import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Spinn
 import { CompanyPanel } from "./CompanyPanel";
 import { DailyChart } from "../chart/DailyChart";
 import type { Drawing, DrawingTool } from "../chart/drawings";
+import { DEFAULT_INDICATOR_ID, indicatorById } from "../chart/indicators";
+
+/** Shared by the candle request and the indicator request. Both omit from/to so the API applies one default window. */
+const CANDLE_RANGE = undefined;
+
+function isAbortError(error: unknown): boolean {
+  return (error instanceof DOMException || error instanceof Error) && error.name === "AbortError";
+}
 
 export function SymbolPage() {
   const { ticker = "" } = useParams();
   const t = ticker.toUpperCase();
   const [bars, setBars] = useState<Bar[]>([]);
+  const [barsTicker, setBarsTicker] = useState("");
   const [row, setRow] = useState<SymbolRow | null>(null);
-  const [sma, setSma] = useState<(number | null)[]>([]);
-  const [showSma, setShowSma] = useState(true);
+  const [indicatorId, setIndicatorId] = useState(DEFAULT_INDICATOR_ID);
+  const [indicatorData, setIndicatorData] = useState<unknown>(null);
+  const [indicatorTicker, setIndicatorTicker] = useState("");
   const [tab, setTab] = useState("Company");
   const [note, setNote] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -29,18 +39,16 @@ export function SymbolPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [b, header, ind, dr, pn] = await Promise.all([
-          api.bars(t),
+        const [b, header, dr, pn] = await Promise.all([
+          api.bars(t, CANDLE_RANGE),
           api.symbol(t).catch(() => null),
-          api.indicators(t, "sma:20").catch(() => ({})),
           api.drawings(t).catch(() => []),
           api.pageNote(t).catch(() => ({ body: "" })),
         ]);
         if (cancelled) return;
         setBars(b);
+        setBarsTicker(t);
         setRow(header);
-        const indRaw = (ind as Record<string, unknown>)["sma:20"];
-        setSma(Array.isArray(indRaw) ? (indRaw as (number | null)[]) : []);
         setDrawings((dr as Drawing[]) || []);
         setNote(pn.body || "");
       } catch {
@@ -51,6 +59,35 @@ export function SymbolPage() {
       cancelled = true;
     };
   }, [t]);
+
+  useEffect(() => {
+    const spec = indicatorById(indicatorId);
+    if (!spec.apiName) {
+      setIndicatorData(null);
+      setIndicatorTicker(t);
+      return;
+    }
+    const ctrl = new AbortController();
+    let active = true;
+    setIndicatorData(null);
+    setIndicatorTicker("");
+    api
+      .indicators(t, spec.apiName, CANDLE_RANGE, { signal: ctrl.signal })
+      .then((body) => {
+        if (!active) return;
+        setIndicatorData(body[spec.apiName!] ?? null);
+        setIndicatorTicker(t);
+      })
+      .catch((error: unknown) => {
+        if (!active || isAbortError(error)) return;
+        setIndicatorData(null);
+        setIndicatorTicker(t);
+      });
+    return () => {
+      active = false;
+      ctrl.abort();
+    };
+  }, [t, indicatorId]);
 
   useEffect(() => {
     if (tab !== "Company") return;
@@ -103,9 +140,9 @@ export function SymbolPage() {
             <DailyChart
               ticker={t}
               bars={bars}
-              sma20={sma}
-              showSma={showSma}
-              onToggleSma={() => setShowSma((v) => !v)}
+              indicatorId={indicatorId}
+              indicatorData={barsTicker === t && indicatorTicker === t ? indicatorData : null}
+              onIndicator={setIndicatorId}
               drawings={drawings}
               tool={tool}
               onTool={setTool}

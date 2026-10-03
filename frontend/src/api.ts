@@ -104,11 +104,11 @@ export const api = {
   symbols: (q = "", init?: RequestInit) => req<SymbolPage>(`/api/symbols${q}`, init),
   symbol: (ticker: string) => req<SymbolRow>(`/api/symbols/${encodeURIComponent(ticker)}`),
   bars: (ticker: string, range?: { from?: string; to?: string }) => req<Bar[]>(withRange(`/api/symbols/${ticker}/bars`, range)),
-  indicators: (ticker: string, names: string, range?: { from?: string; to?: string }) => {
+  indicators: (ticker: string, names: string, range?: { from?: string; to?: string }, init?: RequestInit) => {
     const params = new URLSearchParams({ names });
     if (range?.from) params.set("from", range.from);
     if (range?.to) params.set("to", range.to);
-    return req<Record<string, unknown>>(`/api/symbols/${ticker}/indicators?${params.toString()}`);
+    return req<Record<string, unknown>>(`/api/symbols/${ticker}/indicators?${params.toString()}`, init);
   },
   pin: (ticker: string) => req<SymbolRow>(`/api/watchlist/${ticker}`, { method: "POST" }),
   unpin: (ticker: string) => req(`/api/watchlist/${ticker}`, { method: "DELETE" }),
