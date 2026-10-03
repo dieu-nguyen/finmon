@@ -6,14 +6,24 @@ import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Spinn
 import { CompanyPanel } from "./CompanyPanel";
 import { DailyChart } from "../chart/DailyChart";
 import type { Drawing, DrawingTool } from "../chart/drawings";
+import { DEFAULT_INDICATOR_IDS, indicatorQuery } from "../chart/indicators";
+
+/** Shared by the candle request and the indicator request. Both omit from/to so the API applies one default window. */
+const CANDLE_RANGE = undefined;
+
+function isAbortError(error: unknown): boolean {
+  return (error instanceof DOMException || error instanceof Error) && error.name === "AbortError";
+}
 
 export function SymbolPage() {
   const { ticker = "" } = useParams();
   const t = ticker.toUpperCase();
   const [bars, setBars] = useState<Bar[]>([]);
+  const [barsTicker, setBarsTicker] = useState("");
   const [row, setRow] = useState<SymbolRow | null>(null);
-  const [sma, setSma] = useState<(number | null)[]>([]);
-  const [showSma, setShowSma] = useState(true);
+  const [indicatorIds, setIndicatorIds] = useState<string[]>(DEFAULT_INDICATOR_IDS);
+  const [indicatorBody, setIndicatorBody] = useState<Record<string, unknown> | null>(null);
+  const [indicatorTicker, setIndicatorTicker] = useState("");
   const [tab, setTab] = useState("Company");
   const [note, setNote] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -29,18 +39,16 @@ export function SymbolPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [b, header, ind, dr, pn] = await Promise.all([
-          api.bars(t),
+        const [b, header, dr, pn] = await Promise.all([
+          api.bars(t, CANDLE_RANGE),
           api.symbol(t).catch(() => null),
-          api.indicators(t, "sma:20").catch(() => ({})),
           api.drawings(t).catch(() => []),
           api.pageNote(t).catch(() => ({ body: "" })),
         ]);
         if (cancelled) return;
         setBars(b);
+        setBarsTicker(t);
         setRow(header);
-        const indRaw = (ind as Record<string, unknown>)["sma:20"];
-        setSma(Array.isArray(indRaw) ? (indRaw as (number | null)[]) : []);
         setDrawings((dr as Drawing[]) || []);
         setNote(pn.body || "");
       } catch {
@@ -51,6 +59,33 @@ export function SymbolPage() {
       cancelled = true;
     };
   }, [t]);
+
+  const indicatorKey = indicatorIds.join(",");
+  useEffect(() => {
+    const names = indicatorQuery(indicatorIds);
+    if (!names) {
+      setIndicatorBody(null);
+      setIndicatorTicker(t);
+      return;
+    }
+    const ctrl = new AbortController();
+    let active = true;
+    api
+      .indicators(t, names, CANDLE_RANGE, { signal: ctrl.signal })
+      .then((body) => {
+        if (!active) return;
+        setIndicatorBody(body);
+        setIndicatorTicker(t);
+      })
+      .catch((error: unknown) => {
+        if (!active || isAbortError(error)) return;
+        setIndicatorTicker(t);
+      });
+    return () => {
+      active = false;
+      ctrl.abort();
+    };
+  }, [t, indicatorKey, indicatorIds]);
 
   useEffect(() => {
     if (tab !== "Company") return;
@@ -103,9 +138,9 @@ export function SymbolPage() {
             <DailyChart
               ticker={t}
               bars={bars}
-              sma20={sma}
-              showSma={showSma}
-              onToggleSma={() => setShowSma((v) => !v)}
+              indicatorIds={indicatorIds}
+              indicatorData={barsTicker === t && indicatorTicker === t ? indicatorBody : null}
+              onIndicator={setIndicatorIds}
               drawings={drawings}
               tool={tool}
               onTool={setTool}

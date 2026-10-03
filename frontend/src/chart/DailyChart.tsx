@@ -3,8 +3,10 @@ import { useMemo } from "react";
 import type { Bar } from "../api";
 import { IconButton, formatDong } from "../design-system";
 import { ToolGlyph } from "../design-system/icons";
+import { buildDailyOption, type ChartColors } from "./dailyOption";
 import type { Drawing, DrawingTool } from "./drawings";
-import { categoryIndex, FIB_LEVELS } from "./drawings";
+import { DEFAULT_INDICATOR_IDS } from "./indicators";
+import { IndicatorPicker } from "./IndicatorPicker";
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#e6edf3";
@@ -13,9 +15,9 @@ function cssVar(name: string): string {
 export function DailyChart({
   ticker,
   bars,
-  sma20,
-  showSma,
-  onToggleSma,
+  indicatorIds = DEFAULT_INDICATOR_IDS,
+  indicatorData = null,
+  onIndicator,
   drawings,
   tool,
   onTool,
@@ -26,9 +28,9 @@ export function DailyChart({
 }: {
   ticker: string;
   bars: Bar[];
-  sma20?: (number | null)[];
-  showSma: boolean;
-  onToggleSma: () => void;
+  indicatorIds?: string[];
+  indicatorData?: Record<string, unknown> | null;
+  onIndicator: (ids: string[]) => void;
   drawings: Drawing[];
   tool: DrawingTool;
   onTool: (t: DrawingTool) => void;
@@ -37,97 +39,19 @@ export function DailyChart({
   ceiling?: number | null;
   floor?: number | null;
 }) {
-  const dates = bars.map((b) => b.date);
-  const option = useMemo(() => {
-    const up = cssVar("--up");
-    const down = cssVar("--down");
-    const border = cssVar("--border");
-    const faint = cssVar("--text-faint");
-    const elev = cssVar("--bg-elev");
-    const text = cssVar("--text");
-    const accent = cssVar("--accent");
-    const markLineData = [];
-    if (refPrice) markLineData.push({ yAxis: refPrice, lineStyle: { color: faint }, label: { formatter: "ref" } });
-    if (ceiling) markLineData.push({ yAxis: ceiling, lineStyle: { color: up }, label: { formatter: "ceil" } });
-    if (floor) markLineData.push({ yAxis: floor, lineStyle: { color: down }, label: { formatter: "floor" } });
-    for (const d of drawings) {
-      if (d.tool === "horizontal" && d.points[0]) {
-        markLineData.push({ yAxis: d.points[0].price, lineStyle: { color: accent } });
-      }
-    }
-    const markPoint = drawings
-      .filter((d) => d.tool === "pin" || d.tool === "text")
-      .map((d) => ({
-        coord: [d.points[0]?.date, d.points[0]?.price],
-        value: d.tool === "text" ? "note" : "pin",
-      }));
-    const graphics: unknown[] = [];
-    for (const d of drawings) {
-      if (d.tool === "trend" && d.points.length >= 2) {
-        graphics.push({
-          type: "line",
-          xAxis: categoryIndex(dates, d.points[0].date),
-          yAxis: d.points[0].price,
-          xAxis2: categoryIndex(dates, d.points[1].date),
-          yAxis2: d.points[1].price,
-        });
-      }
-    }
-    return {
-      backgroundColor: "transparent",
-      animation: false,
-      tooltip: {
-        trigger: "axis",
-        backgroundColor: elev,
-        textStyle: { color: text, fontFamily: "IBM Plex Mono, monospace" },
-      },
-      axisPointer: { link: [{ xAxisIndex: "all" }] },
-      grid: [
-        { left: 60, right: 20, top: 24, height: "58%" },
-        { left: 60, right: 20, top: "78%", height: "14%" },
-      ],
-      xAxis: [
-        { type: "category", data: dates, gridIndex: 0, axisLabel: { color: faint }, axisLine: { lineStyle: { color: border } }, splitLine: { show: false } },
-        { type: "category", data: dates, gridIndex: 1, axisLabel: { show: false }, axisLine: { lineStyle: { color: border } } },
-      ],
-      yAxis: [
-        { scale: true, gridIndex: 0, axisLabel: { color: faint, fontFamily: "IBM Plex Mono, monospace" }, splitLine: { lineStyle: { color: border } }, axisLine: { lineStyle: { color: border } } },
-        { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { color: faint }, splitLine: { lineStyle: { color: border } } },
-      ],
-      dataZoom: [
-        { type: "inside", xAxisIndex: [0, 1] },
-        { type: "slider", xAxisIndex: [0, 1], bottom: 4, height: 18, borderColor: border, fillerColor: "rgba(110,168,254,0.15)", textStyle: { color: faint } },
-      ],
-      series: [
-        {
-          type: "candlestick",
-          data: bars.map((b) => [b.open, b.close, b.low, b.high]),
-          itemStyle: { color: up, color0: down, borderColor: up, borderColor0: down },
-          markLine: { symbol: "none", data: markLineData, label: { color: faint } },
-          markPoint: { data: markPoint },
-        },
-        ...(showSma && sma20
-          ? [
-              {
-                type: "line",
-                data: sma20,
-                showSymbol: false,
-                lineStyle: { color: accent, width: 1 },
-              },
-            ]
-          : []),
-        {
-          type: "bar",
-          xAxisIndex: 1,
-          yAxisIndex: 1,
-          data: bars.map((b) => ({
-            value: b.volume,
-            itemStyle: { color: b.close >= b.open ? "rgba(61,214,140,0.4)" : "rgba(248,113,113,0.4)" },
-          })),
-        },
-      ],
+  const view = useMemo(() => {
+    const colors: ChartColors = {
+      up: cssVar("--up"),
+      down: cssVar("--down"),
+      border: cssVar("--border"),
+      faint: cssVar("--text-faint"),
+      elev: cssVar("--bg-elev"),
+      text: cssVar("--text"),
+      accent: cssVar("--accent"),
+      warn: cssVar("--warn"),
     };
-  }, [bars, sma20, showSma, drawings, dates, refPrice, ceiling, floor]);
+    return buildDailyOption({ bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, colors });
+  }, [bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor]);
 
   const tools: { id: DrawingTool; label: string }[] = [
     { id: "pan", label: "pan" },
@@ -140,21 +64,18 @@ export function DailyChart({
     { id: "delete", label: "delete selected" },
   ];
   const last = bars.at(-1);
-  const smaLast = showSma ? ([...(sma20 ?? [])].reverse().find((value) => value != null) ?? null) : null;
   const volClass = last && last.close >= last.open ? "up" : "down";
 
   return (
     <div className="chart-stack" data-ticker={ticker}>
       <div className="tool-row">
-        {tools.map((t) => (
-          <IconButton key={t.id} label={t.label} active={tool === t.id} onClick={() => onTool(t.id)}>
-            <ToolGlyph name={t.id} />
+        {tools.map((item) => (
+          <IconButton key={item.id} label={item.label} active={tool === item.id} onClick={() => onTool(item.id)}>
+            <ToolGlyph name={item.id} />
           </IconButton>
         ))}
         <span className="tool-sep" />
-        <button type="button" className={showSma ? "sma-chip on" : "sma-chip"} aria-pressed={showSma} onClick={onToggleSma}>
-          SMA 20
-        </button>
+        <IndicatorPicker value={indicatorIds} onChange={onIndicator} />
       </div>
       {last ? (
         <div className="ohlc">
@@ -171,15 +92,16 @@ export function DailyChart({
             C <b>{formatDong(last.close)}</b>
           </span>
           <span className={volClass}>Vol {formatDong(last.volume)}</span>
-          {smaLast != null ? (
-            <span>
-              SMA(20) <b>{formatDong(smaLast)}</b>
+          {view.readouts.map((item) => (
+            <span key={item.label}>
+              {item.label} <b>{item.value}</b>
             </span>
-          ) : null}
+          ))}
         </div>
       ) : null}
       <ReactECharts
-        option={option}
+        option={view.option}
+        notMerge
         style={{ height: 520 }}
         onEvents={{
           click: (params: { dataIndex?: number; value?: unknown }) => {
@@ -195,14 +117,10 @@ export function DailyChart({
               onDrawings([...drawings, { tool, points: [{ date: bar.date, price: Number(price) }] }]);
               return;
             }
-            const last = drawings[drawings.length - 1];
-            if (last && last.tool === tool && last.points.length === 1) {
+            const previous = drawings[drawings.length - 1];
+            if (previous && previous.tool === tool && previous.points.length === 1) {
               const next = drawings.slice(0, -1);
-              const pts = [...last.points, { date: bar.date, price: Number(price) }];
-              if (tool === "fib") {
-                onDrawings([...next, { tool, points: pts }]);
-                return;
-              }
+              const pts = [...previous.points, { date: bar.date, price: Number(price) }];
               onDrawings([...next, { tool, points: pts }]);
               return;
             }
