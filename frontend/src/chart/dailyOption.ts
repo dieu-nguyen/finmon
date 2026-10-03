@@ -1,7 +1,7 @@
 import type { Bar } from "../api";
 import type { Drawing } from "./drawings";
 import { categoryIndex } from "./drawings";
-import { indicatorById, indicatorPlot, type IndicatorReadout, type PlotColors } from "./indicators";
+import { findIndicator, indicatorPlot, type IndicatorPlot, type IndicatorReadout, type PlotColors } from "./indicators";
 
 export type ChartColors = PlotColors & {
   border: string;
@@ -49,6 +49,45 @@ export type DailyOption = {
   graphic?: unknown[];
 };
 
+function place(series: Record<string, unknown>[], x: number, y: number): DailySeries[] {
+  return series.map((item) => ({ ...item, xAxisIndex: x, yAxisIndex: y })) as DailySeries[];
+}
+
+function layoutPanes(count: number): { left: number; right: number; top: number | string; height: string }[] {
+  if (count <= 0) {
+    return [
+      { left: 60, right: 20, top: 24, height: "58%" },
+      { left: 60, right: 20, top: "78%", height: "14%" },
+    ];
+  }
+  if (count === 1) {
+    return [
+      { left: 60, right: 20, top: 16, height: "42%" },
+      { left: 60, right: 20, top: "52%", height: "18%" },
+      { left: 60, right: 20, top: "74%", height: "12%" },
+    ];
+  }
+  const slider = 8;
+  const volume = 10;
+  const gap = 1.5;
+  const start = 1;
+  const gaps = (count + 1) * gap;
+  const budget = 100 - slider - volume - start - gaps;
+  const osc = Math.min(14, Math.max(9, (budget * 0.45) / count));
+  const price = budget - osc * count;
+  const round = (value: number) => Math.round(value * 10) / 10;
+  const grids: { left: number; right: number; top: string; height: string }[] = [];
+  let cursor = start;
+  grids.push({ left: 60, right: 20, top: `${round(cursor)}%`, height: `${round(price)}%` });
+  cursor += price + gap;
+  for (let i = 0; i < count; i += 1) {
+    grids.push({ left: 60, right: 20, top: `${round(cursor)}%`, height: `${round(osc)}%` });
+    cursor += osc + gap;
+  }
+  grids.push({ left: 60, right: 20, top: `${round(cursor)}%`, height: `${volume}%` });
+  return grids;
+}
+
 function categoryAxis(dates: string[], gridIndex: number, colors: ChartColors, showLabels: boolean) {
   return {
     type: "category",
@@ -63,19 +102,25 @@ function categoryAxis(dates: string[], gridIndex: number, colors: ChartColors, s
 export function buildDailyOption(input: {
   bars: Bar[];
   drawings: Drawing[];
-  indicatorId: string;
-  indicatorData: unknown;
+  indicatorIds: string[];
+  indicatorData: Record<string, unknown> | null;
   refPrice?: number | null;
   ceiling?: number | null;
   floor?: number | null;
   colors: ChartColors;
-}): { option: DailyOption; readout: IndicatorReadout | null } {
+}): { option: DailyOption; readouts: IndicatorReadout[] } {
   const { bars, drawings, colors } = input;
   const dates = bars.map((bar) => bar.date);
-  const spec = indicatorById(input.indicatorId);
-  const plot = indicatorPlot(spec, input.indicatorData, colors);
-  const separate = plot.separate;
-  const volumeIndex = separate ? 2 : 1;
+  const plots: IndicatorPlot[] = [];
+  for (const id of input.indicatorIds) {
+    const spec = findIndicator(id);
+    if (!spec) continue;
+    const payload = input.indicatorData?.[spec.apiName];
+    const plot = indicatorPlot(spec, payload, colors);
+    if (plot.series.length > 0) plots.push(plot);
+  }
+  const separates = plots.filter((plot) => plot.pane === "separate");
+  const volumeIndex = 1 + separates.length;
 
   const markLineData: Mark[] = [];
   if (input.refPrice) markLineData.push({ yAxis: input.refPrice, lineStyle: { color: colors.faint }, label: { formatter: "ref" } });
@@ -120,34 +165,27 @@ export function buildDailyOption(input: {
     splitLine: { lineStyle: { color: colors.border } },
   };
   const yAxis: DailyAxis[] = [priceAxis];
-  if (separate && plot.axis) {
+  separates.forEach((plot, index) => {
     yAxis.push({
-      ...plot.axis,
-      gridIndex: 1,
+      ...(plot.axis ?? { scale: true }),
+      gridIndex: index + 1,
       axisLabel: { color: colors.faint, fontFamily: "IBM Plex Mono, monospace" },
       splitLine: { lineStyle: { color: colors.border } },
     });
-  }
+  });
   yAxis.push(volumeAxis);
 
-  const xAxis = separate
-    ? [categoryAxis(dates, 0, colors, false), categoryAxis(dates, 1, colors, false), categoryAxis(dates, volumeIndex, colors, true)]
-    : [categoryAxis(dates, 0, colors, true), categoryAxis(dates, 1, colors, false)];
-
-  const grid = separate
-    ? [
-        { left: 60, right: 20, top: 16, height: "42%" },
-        { left: 60, right: 20, top: "52%", height: "18%" },
-        { left: 60, right: 20, top: "74%", height: "12%" },
-      ]
-    : [
-        { left: 60, right: 20, top: 24, height: "58%" },
-        { left: 60, right: 20, top: "78%", height: "14%" },
-      ];
-
-  const xIndexes = separate ? [0, 1, 2] : [0, 1];
-  const priceLines = plot.series.filter((series) => (series.yAxisIndex as number) === 0);
-  const otherLines = plot.series.filter((series) => (series.yAxisIndex as number) !== 0);
+  const xAxis = [
+    categoryAxis(dates, 0, colors, separates.length === 0),
+    ...separates.map((_, index) => categoryAxis(dates, index + 1, colors, false)),
+    categoryAxis(dates, volumeIndex, colors, separates.length > 0),
+  ];
+  const grid = layoutPanes(separates.length);
+  const xIndexes = xAxis.map((_, index) => index);
+  const priceLines = plots.filter((plot) => plot.pane === "price").flatMap((plot) => place(plot.series, 0, 0));
+  const volumeLines = plots.filter((plot) => plot.pane === "volume").flatMap((plot) => place(plot.series, volumeIndex, volumeIndex));
+  const separateLines = separates.flatMap((plot, index) => place(plot.series, index + 1, index + 1));
+  const readouts = plots.flatMap((plot) => (plot.readout ? [plot.readout] : []));
 
   const option: DailyOption = {
     backgroundColor: "transparent",
@@ -181,7 +219,7 @@ export function buildDailyOption(input: {
         markLine: { symbol: "none", data: markLineData, label: { color: colors.faint } },
         markPoint: { data: markPoint },
       },
-      ...(priceLines as DailySeries[]),
+      ...priceLines,
       {
         type: "bar",
         xAxisIndex: volumeIndex,
@@ -191,10 +229,11 @@ export function buildDailyOption(input: {
           itemStyle: { color: bar.close >= bar.open ? "rgba(61,214,140,0.4)" : "rgba(248,113,113,0.4)" },
         })),
       },
-      ...(otherLines as DailySeries[]),
+      ...volumeLines,
+      ...separateLines,
     ],
     graphic: graphics,
   };
 
-  return { option, readout: plot.readout };
+  return { option, readouts };
 }

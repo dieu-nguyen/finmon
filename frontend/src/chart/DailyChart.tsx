@@ -5,7 +5,7 @@ import { IconButton, formatDong } from "../design-system";
 import { ToolGlyph } from "../design-system/icons";
 import { buildDailyOption, type ChartColors } from "./dailyOption";
 import type { Drawing, DrawingTool } from "./drawings";
-import { DEFAULT_INDICATOR_ID } from "./indicators";
+import { DEFAULT_INDICATOR_IDS } from "./indicators";
 import { IndicatorPicker } from "./IndicatorPicker";
 
 function cssVar(name: string): string {
@@ -15,7 +15,7 @@ function cssVar(name: string): string {
 export function DailyChart({
   ticker,
   bars,
-  indicatorId = DEFAULT_INDICATOR_ID,
+  indicatorIds = DEFAULT_INDICATOR_IDS,
   indicatorData = null,
   onIndicator,
   drawings,
@@ -28,9 +28,9 @@ export function DailyChart({
 }: {
   ticker: string;
   bars: Bar[];
-  indicatorId?: string;
-  indicatorData?: unknown;
-  onIndicator: (id: string) => void;
+  indicatorIds?: string[];
+  indicatorData?: Record<string, unknown> | null;
+  onIndicator: (ids: string[]) => void;
   drawings: Drawing[];
   tool: DrawingTool;
   onTool: (t: DrawingTool) => void;
@@ -50,8 +50,8 @@ export function DailyChart({
       accent: cssVar("--accent"),
       warn: cssVar("--warn"),
     };
-    return buildDailyOption({ bars, drawings, indicatorId, indicatorData, refPrice, ceiling, floor, colors });
-  }, [bars, drawings, indicatorId, indicatorData, refPrice, ceiling, floor]);
+    return buildDailyOption({ bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, colors });
+  }, [bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor]);
 
   const tools: { id: DrawingTool; label: string }[] = [
     { id: "pan", label: "pan" },
@@ -75,7 +75,7 @@ export function DailyChart({
           </IconButton>
         ))}
         <span className="tool-sep" />
-        <IndicatorPicker value={indicatorId} onChange={onIndicator} />
+        <IndicatorPicker value={indicatorIds} onChange={onIndicator} />
       </div>
       {last ? (
         <div className="ohlc">
@@ -92,11 +92,11 @@ export function DailyChart({
             C <b>{formatDong(last.close)}</b>
           </span>
           <span className={volClass}>Vol {formatDong(last.volume)}</span>
-          {view.readout ? (
-            <span>
-              {view.readout.label} <b>{view.readout.value}</b>
+          {view.readouts.map((item) => (
+            <span key={item.label}>
+              {item.label} <b>{item.value}</b>
             </span>
-          ) : null}
+          ))}
         </div>
       ) : null}
       <ReactECharts

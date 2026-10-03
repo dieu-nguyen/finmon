@@ -71,10 +71,11 @@ describe("Symbol indicator picker", () => {
         urls.push(url);
         if (url.includes("/bars")) return json(bars);
         if (url.includes("/indicators")) {
-          const names = namesFrom(url);
-          if (names === "rsi:14") return json({ dates: ["2026-01-02"], "rsi:14": [62] });
-          if (names === "sma:20") return json({ dates: ["2026-01-02"], "sma:20": [10.5] });
-          return json({ dates: ["2026-01-02"] });
+          const names = namesFrom(url) ?? "";
+          const body: Record<string, unknown> = { dates: ["2026-01-02"] };
+          if (names.includes("sma:20")) body["sma:20"] = [10.5];
+          if (names.includes("rsi:14")) body["rsi:14"] = [62];
+          return json(body);
         }
         if (url.endsWith("/company")) return json({ ticker: "TIG", profile: [], statements: {}, ratios: [] });
         if (url.endsWith("/page-note")) return json({ body: "" });
@@ -86,7 +87,8 @@ describe("Symbol indicator picker", () => {
     renderSymbol();
 
     const box = await screen.findByRole("combobox", { name: "Indicator" });
-    expect(box).toHaveValue("SMA (20)");
+    expect(screen.getByRole("button", { name: "Remove SMA (20)" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "None" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "SMA 20" })).not.toBeInTheDocument();
     expect(screen.getByTestId("chart-option")).toHaveAttribute("data-not-merge", "true");
     await waitFor(() => {
@@ -107,32 +109,35 @@ describe("Symbol indicator picker", () => {
       "RSI (14)",
       "MACD (12, 26, 9)",
       "ATR (14)",
-      "None",
     ]);
-    fireEvent.change(box, { target: { value: "rsi" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Indicator" }), { target: { value: "rsi" } });
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["RSI (14)"]);
     fireEvent.click(screen.getByRole("option", { name: "RSI (14)" }));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
 
     await waitFor(() => {
       const requested = urls.filter((url) => url.includes("/indicators")).map((url) => namesFrom(url));
-      expect(requested).toEqual(["sma:20", "rsi:14"]);
+      expect(requested).toEqual(["sma:20", "sma:20,rsi:14"]);
       const state = chartState();
       expect(state.grid).toBe("3");
+      expect(state.series.find((item) => item.name === "SMA (20)")?.y).toBe(0);
       expect(state.series.find((item) => item.name === "RSI (14)")?.y).toBe(1);
       expect(state.series.find((item) => item.type === "candlestick")?.y).toBe(0);
       expect(state.yaxis.some((axis) => axis.min === 0 && axis.max === 100)).toBe(true);
-      expect(state.series.some((item) => item.name === "SMA (20)")).toBe(false);
+      expect(state.yaxis[0]?.min).toBeNull();
     });
 
-    fireEvent.click(screen.getByRole("combobox", { name: "Indicator" }));
-    fireEvent.click(screen.getByRole("option", { name: "None" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Indicator" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("option", { name: "SMA (20)" }));
     await waitFor(() => {
+      const requested = urls.filter((url) => url.includes("/indicators")).map((url) => namesFrom(url));
+      expect(requested).toEqual(["sma:20", "sma:20,rsi:14", "rsi:14"]);
       const state = chartState();
-      expect(state.grid).toBe("2");
-      expect(state.series.map((item) => item.type)).toEqual(["candlestick", "bar"]);
-      expect(state.yaxis.some((axis) => axis.min === 0 && axis.max === 100)).toBe(false);
+      expect(state.grid).toBe("3");
+      expect(state.series.some((item) => item.name === "SMA (20)")).toBe(false);
+      expect(state.series.find((item) => item.name === "RSI (14)")?.y).toBe(1);
+      expect(state.series.find((item) => item.type === "candlestick")?.y).toBe(0);
     });
-    expect(urls.filter((url) => url.includes("/indicators")).map((url) => namesFrom(url))).toEqual(["sma:20", "rsi:14"]);
   });
 
   it("aborts the previous indicator request when the selection changes", async () => {

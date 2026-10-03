@@ -6,7 +6,7 @@ import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Spinn
 import { CompanyPanel } from "./CompanyPanel";
 import { DailyChart } from "../chart/DailyChart";
 import type { Drawing, DrawingTool } from "../chart/drawings";
-import { DEFAULT_INDICATOR_ID, indicatorById } from "../chart/indicators";
+import { DEFAULT_INDICATOR_IDS, indicatorQuery } from "../chart/indicators";
 
 /** Shared by the candle request and the indicator request. Both omit from/to so the API applies one default window. */
 const CANDLE_RANGE = undefined;
@@ -21,8 +21,8 @@ export function SymbolPage() {
   const [bars, setBars] = useState<Bar[]>([]);
   const [barsTicker, setBarsTicker] = useState("");
   const [row, setRow] = useState<SymbolRow | null>(null);
-  const [indicatorId, setIndicatorId] = useState(DEFAULT_INDICATOR_ID);
-  const [indicatorData, setIndicatorData] = useState<unknown>(null);
+  const [indicatorIds, setIndicatorIds] = useState<string[]>(DEFAULT_INDICATOR_IDS);
+  const [indicatorBody, setIndicatorBody] = useState<Record<string, unknown> | null>(null);
   const [indicatorTicker, setIndicatorTicker] = useState("");
   const [tab, setTab] = useState("Company");
   const [note, setNote] = useState("");
@@ -60,34 +60,32 @@ export function SymbolPage() {
     };
   }, [t]);
 
+  const indicatorKey = indicatorIds.join(",");
   useEffect(() => {
-    const spec = indicatorById(indicatorId);
-    if (!spec.apiName) {
-      setIndicatorData(null);
+    const names = indicatorQuery(indicatorIds);
+    if (!names) {
+      setIndicatorBody(null);
       setIndicatorTicker(t);
       return;
     }
     const ctrl = new AbortController();
     let active = true;
-    setIndicatorData(null);
-    setIndicatorTicker("");
     api
-      .indicators(t, spec.apiName, CANDLE_RANGE, { signal: ctrl.signal })
+      .indicators(t, names, CANDLE_RANGE, { signal: ctrl.signal })
       .then((body) => {
         if (!active) return;
-        setIndicatorData(body[spec.apiName!] ?? null);
+        setIndicatorBody(body);
         setIndicatorTicker(t);
       })
       .catch((error: unknown) => {
         if (!active || isAbortError(error)) return;
-        setIndicatorData(null);
         setIndicatorTicker(t);
       });
     return () => {
       active = false;
       ctrl.abort();
     };
-  }, [t, indicatorId]);
+  }, [t, indicatorKey, indicatorIds]);
 
   useEffect(() => {
     if (tab !== "Company") return;
@@ -140,9 +138,9 @@ export function SymbolPage() {
             <DailyChart
               ticker={t}
               bars={bars}
-              indicatorId={indicatorId}
-              indicatorData={barsTicker === t && indicatorTicker === t ? indicatorData : null}
-              onIndicator={setIndicatorId}
+              indicatorIds={indicatorIds}
+              indicatorData={barsTicker === t && indicatorTicker === t ? indicatorBody : null}
+              onIndicator={setIndicatorIds}
               drawings={drawings}
               tool={tool}
               onTool={setTool}
