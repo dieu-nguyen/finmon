@@ -89,10 +89,10 @@ These four are the first build. Each name is one value of `spec.pattern` on kind
 
 | Pattern | `spec.pattern` | Rule |
 | --- | --- | --- |
-| Double bottom | `double_bottom` | Two lows at nearly the same price, with a peak between them. The swings are low, rally, low. The two lows sit in a small price band. The rally between them is the neckline. The second low is recent. |
-| Double top | `double_top` | Two highs at nearly the same price, with a trough between them. The swings are high, decline, high. The two highs sit in a small price band. The trough between them is the neckline. The second high is recent. |
-| Head and shoulders | `head_and_shoulders` | Three highs. The middle one is clearly higher. The two shoulders are close in price. The swings are shoulder, trough, higher head, trough, shoulder. The neckline runs through the two troughs. |
-| Inverse head and shoulders | `inverse_head_and_shoulders` | Three lows. The middle one is clearly lower. The two shoulders are close in price. The swings are shoulder, peak, lower head, peak, shoulder. The neckline runs through the two peaks. |
+| Double bottom | `double_bottom` | Two lows at nearly the same price, with a peak between them. The swings are low, rally, low. The two lows sit in a small price band. The rally between them is the neckline. The last swing is at the right edge. |
+| Double top | `double_top` | Two highs at nearly the same price, with a trough between them. The swings are high, decline, high. The two highs sit in a small price band. The trough between them is the neckline. The last swing is at the right edge. |
+| Head and shoulders | `head_and_shoulders` | Three highs. The middle one is clearly higher. The two shoulders are close in price. The swings are shoulder, trough, higher head, trough, shoulder. The neckline runs through the two troughs. The last swing is at the right edge. |
+| Inverse head and shoulders | `inverse_head_and_shoulders` | Three lows. The middle one is clearly lower. The two shoulders are close in price. The swings are shoulder, peak, lower head, peak, shoulder. The neckline runs through the two peaks. The last swing is at the right edge. |
 
 ### Later names
 
@@ -109,32 +109,52 @@ Same kind. Not in the first build.
 
 Cup and handle uses a longer window than the first four. That length is still open.
 
+### Right edge
+
+The 90 sessions are how far back the detector may look for the swings of the current pattern. They are not a search through every stretch inside those 90 sessions.
+
+The last swing of the pattern is at the right edge. A pattern that sits only from T-60 to T-30 does not match. That holds on the market scan and on the one-ticker check.
+
+Older bars inside the 90 may be read while building the current pattern. They are not reported as their own match.
+
+Forming: the swings are in place, and price has not left the neckline yet. Confirmed: a close has broken the neckline, and that break is the latest part of the pattern, not an old event with a later run of unrelated bars after it.
+
 ### Flow
 
-For one saved named pattern:
+For one saved named pattern, the market scan:
 
 1. Walk listed stocks and ETFs on HOSE, HNX, and UPCOM that have enough daily bars. Stored UPX counts as UPCOM. Skip bonds, HCX, indices, and futures (`type=futures`).
-2. Read recent daily high, low, and close. Closes alone are not enough. The first four use about 90 sessions. The exact count is still open.
+2. Read the last 90 sessions of daily high, low, and close. Closes alone are not enough. Those 90 sessions are the lookback for the current pattern. The price band and the swing width stay open.
 3. Mark swing highs and swing lows. A swing high is a bar whose high is the highest in a few bars on each side. A swing low is a bar whose low is the lowest in a few bars on each side. How many bars is still open.
-4. Test the last swings against that pattern's rule. A double bottom is low, rally, low. Head and shoulders is five swings: shoulder, trough, higher head, trough, shoulder. Each pattern has its own rule in the tables above. A name that does not have those swings is not a hit.
+4. Test the last swings against that pattern's rule. A double bottom is low, rally, low. Head and shoulders is five swings: shoulder, trough, higher head, trough, shoulder. Each pattern has its own rule in the tables above. A name that does not have those swings is not a hit. A pattern whose last swing is not at the right edge is not a hit.
 5. Score the fit. Even tops or bottoms score higher. A head that barely sticks out scores lower. Keep hits above a floor and cap how many are stored. The floor and the cap are still open.
 6. Save the hit with the ticker, the date window, the score, and the swing dates and prices. `window_start` is the date of the earliest swing in the match. `window_end` is the as-of date. The chart draws those points on that ticker. There is no reference ticker.
-7. A hit is forming or confirmed. Forming: the swings are there, and price has not left the neckline. Confirmed: a close has broken the neckline. For a double bottom that close is above the peak. For a double top it is below the trough. For head and shoulders it is below the neckline through the two troughs. For inverse head and shoulders it is above the neckline through the two peaks. The list shows which.
+7. A hit is forming or confirmed. Forming: the swings are in place, and price has not left the neckline. Confirmed: a close has broken the neckline, and that break is the latest part of the pattern. For a double bottom that close is above the peak. For a double top it is below the trough. For head and shoulders it is below the neckline through the two troughs. For inverse head and shoulders it is above the neckline through the two peaks. The list shows which.
 8. One Telegram message for a successful run. Section 7.
 
-A name is eligible when it is listed, `type` is `stock` or `etf`, the board is HOSE, HNX, UPCOM, or UPX, it has enough daily bars for the window, and the bar on the as-of date exists with `daily_bar.source` `dnse`. Excluded when the other checks would pass: `type=bond`, `type=index`, `type=futures`, board HCX. A missing bar on the as-of date is not eligible. A bar on that date with `source=quote` is not eligible.
+A name is eligible when it is listed, `type` is `stock` or `etf`, the board is HOSE, HNX, UPCOM, or UPX, it has at least 90 `daily_bar` rows on or before the as-of date, and the bar on the as-of date exists with `daily_bar.source` `dnse`. Excluded when the other checks would pass: `type=bond`, `type=index`, `type=futures`, board HCX. A missing bar on the as-of date is not eligible. A bar on that date with `source=quote` is not eligible.
 
 The run still completes. `eligible_count` is the names that pass that list. `compared_count` is how many of those names were tested against the rule.
 
+### One ticker
+
+Accepted design, 2026-10-04. Not yet implemented.
+
+The market scan is one saved pattern across many tickers. From a ticker, you can ask the other way: which of the four patterns that ticker has.
+
+The check reads that ticker's last 90 sessions of high, low, and close, through the official bar on the as-of date. It tests the four first-build rules and the right-edge rule. It returns each match with the pattern name, forming or confirmed, the score, and the swing dates and prices. The chart draws those points on that ticker.
+
+The check and the market scan call the same match rule. A stretch that matches in one view matches in the other. A stretch that sits only from T-60 to T-30 matches in neither.
+
+The check does not walk the catalog. It does not call Pearson. It does not send Telegram. It does not write a second hit table.
+
 ### Still open
 
-These are not locked. Look-alike's floor 0.85 and top 20 are not this method's floor or cap. The first four still read about 90 sessions; the exact count is open.
+These are not locked. Look-alike's floor 0.85 and top 20 are not this method's floor or cap. The first four read the last 90 sessions. That count is locked, as is the right-edge rule.
 
 - The price band ("a small price band", "nearly the same price", "close in price").
 - How many bars on each side mark a swing ("a few").
-- How recent the second low or the second high must be.
 - The score floor, and the cap on stored hits.
-- The exact session count for the first four ("about 90").
 - The cup-and-handle window. It needs more than 90 sessions, and it is not in the first build.
 - Confirmation for the later names. Forming and confirmed above apply to the first four, which have a neckline.
 
@@ -203,6 +223,8 @@ The form:
 The form saves kind `named`, schedule `daily`, and `spec.pattern`. It does not ask for a reference ticker, a minimum score, or a top K. Those numbers are still open (section 4). Saving does not start a run.
 
 A hit opens that ticker's daily chart for the date window and draws the saved swing points. There is no second chart. The points come from the hit. They are not a user drawing.
+
+From a ticker, a check lists which of the four patterns match. Not built yet. Same rules and the same right edge as the market scan. The chart draws the swing points on that ticker. The check does not walk the catalog.
 
 There is no "scan now" button.
 
@@ -302,6 +324,8 @@ Named patterns (not built yet):
 - Kind `named` is dispatched through the method registry. The method does not call Pearson. The pattern has no reference ticker.
 - The saved scan stores `spec.pattern`. The first build accepts the four names in section 4.
 - A hit stores the swing dates and prices, and `forming` or `confirmed`.
+- A pattern whose swings end in the middle of the 90, such as T-60 to T-30, is not a hit on the market scan or the one-ticker check.
+- The one-ticker check uses the same match rule as the market scan.
 - A bond, an index, HCX, and a future are not eligible.
 - A failed run leaves the previous hits queryable, same as look-alike.
 

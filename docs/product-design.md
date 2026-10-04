@@ -23,7 +23,7 @@ Success looks like:
 - You can draw and write on that chart, plus keep a longer note beside it; those survive refresh.
 - When last price crosses an alert you set, Telegram gets a message on that 30-minute poll, while the API is up in session.
 - After the backfill pass that writes the official bar, a job scores enabled look-alike patterns. You open a short hit list, not the catalog.
-- Named patterns are accepted and not built. The same job will score a saved pattern from that ticker's own swings. A hit opens that ticker's chart.
+- Named patterns are accepted and not built. The same job will score a saved pattern from that ticker's own swings, over the last 90 sessions, with the last swing at the right edge. A hit opens that ticker's chart. From a ticker, the same rule reports which of the four match.
 
 The first three bullets are **v1**. Look-alike is **v1.1**. Named patterns are the next scan kind. They are not built.
 
@@ -104,7 +104,7 @@ Universe: listed stock and ETF on HOSE, HNX, and UPCOM (stored UPX counts as UPC
 
 The screen is **Scans**: a short hit list. A hit opens two charts side by side for those 90 sessions. A successful run sends one Telegram message. A failed run keeps the previous hits and sends no hit-list message.
 
-Named patterns are accepted and not built. They sit beside look-alike. A saved scan stores the pattern name and kind `named`. The job reads recent daily high, low, and close, marks swing highs and lows, and tests the last swings against that pattern's rule. The first build is double bottom, double top, head and shoulders, and inverse head and shoulders. A hit stores the ticker, the date window, the score, and the swing dates and prices. The list shows forming or confirmed. The chart draws those points on that ticker. There is no reference ticker. Pearson is not used. Triangles, flags, and cup and handle come later. The price band, swing width, score floor, and cap are still open.
+Named patterns are accepted and not built. They sit beside look-alike. A saved scan stores the pattern name and kind `named`. The job reads the last 90 sessions of daily high, low, and close, marks swing highs and lows, and tests the last swings against that pattern's rule. Those 90 sessions are how far back the current pattern may start. The last swing is at the right edge. A pattern that sits only in the middle of the window is not a hit. The first build is double bottom, double top, head and shoulders, and inverse head and shoulders. A hit stores the ticker, the date window, the score, and the swing dates and prices. The list shows forming or confirmed. The chart draws those points on that ticker. From a ticker you can ask which of the four match. That check uses the same rule as the scan. There is no reference ticker. Pearson is not used. Triangles, flags, and cup and handle come later. The price band, swing width, score floor, and cap are still open.
 
 Rules, shapes, and a weekly schedule are reserved. They are not in this slice.
 
@@ -124,7 +124,7 @@ Pick a reference symbol. Compare its last 90 daily closes to other listed stocks
 
 Accepted. Not built yet.
 
-Save a pattern by name. The job tests that rule on each ticker's own daily high, low, and close. It does not use a reference ticker or Pearson. First build: double bottom, double top, head and shoulders, inverse head and shoulders. A hit is forming or confirmed. The chart draws the swing points on that ticker.
+Save a pattern by name. The job tests that rule on each ticker's own daily high, low, and close over the last 90 sessions. The last swing is at the right edge. It does not use a reference ticker or Pearson. First build: double bottom, double top, head and shoulders, inverse head and shoulders. A hit is forming or confirmed. The chart draws the swing points on that ticker. From a ticker, the same rule reports which of the four match.
 
 Detail: `docs/pattern-compare.md`.
 
@@ -188,7 +188,7 @@ Small units, each with one job:
 - **Market store**: symbols, daily bars, last quote snapshot, ingest watermarks.
 - **Annotation store**: drawings, chart notes, page notes.
 - **Alert engine**: load rules, compare to last price, write delivery log, call Telegram once per fire. The 30-minute poll only.
-- **Pattern job**: no DNSE call. Runs after the backfill pass that writes the official bar. Look-alike on 90 closes. Named patterns, when built, on one ticker's own swings. Writes hits. One Telegram message when the run succeeds.
+- **Pattern job**: no DNSE call. Runs after the backfill pass that writes the official bar. Look-alike on 90 closes. Named patterns, when built, on one ticker's swings over the last 90 sessions, right edge only. Writes hits. One Telegram message when the run succeeds. A one-ticker check uses that same match rule and is not a second job.
 - **API scheduler**: 30-minute watchlist poll, weekdays in session (ICT), including 15:00. No 16:30 history job. Skip Saturday and Sunday; skip VN holidays when a holiday list exists.
 - **Web app**: market list, chart and drawings (Apache ECharts), notes, price alerts, Scans.
 - **Store**: MySQL 8.
@@ -253,7 +253,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 
 **Accepted, not built — named patterns**
 
-7. Same job and the same hit tables. Kind `named`. First four patterns. The list shows forming or confirmed. The chart draws the swings on that ticker.
+7. Same job and the same hit tables. Kind `named`. First four patterns, last 90 sessions, right edge. The list shows forming or confirmed. The chart draws the swings on that ticker. From a ticker, the same rule reports which of the four match.
 
 **Reserved**
 
@@ -276,7 +276,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 - Market list: one segment, 50 rows, ordered by ticker. Search replaces the page.
 - Indicators: daily only, computed on the chart's from/to window, not stored. The chart shows SMA 20.
 - Pattern window (look-alike): 90 trading-day closes, Pearson on min-max, floor 0.85, top 20, reference excluded
-- Named patterns: kind `named` and the pattern name on the saved scan are decided. The price band, bars on each side of a swing, score floor, and hit cap are still open.
+- Named patterns: last 90 sessions as the lookback for the current pattern, last swing at the right edge. Kind `named` and the pattern name on the saved scan are decided. One ticker can be checked against the four patterns with that same rule. The price band, bars on each side of a swing, score floor, and hit cap are still open.
 - Alerts: Telegram on last-price rules. Pattern Telegram is a separate message from the scan job.
 - Single user, no public market data API
 - Language of UI: English labels OK; tickers and company names as returned (Vietnamese)
