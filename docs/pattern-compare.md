@@ -1,15 +1,15 @@
 # Pattern compare
 
 Build spec for pattern compare in `docs/product-design.md`.
-Decisions: `docs/adr/0004-hcx-bonds.md` and `docs/adr/0005-pattern-compare-job.md`.
+Decisions: `docs/adr/0004-hcx-bonds.md`, `docs/adr/0005-pattern-compare-job.md`, and `docs/adr/0006-named-pattern-scan.md`.
 
-Accepted design, 2026-09-27. Not yet implemented.
+Look-alike is built. Named patterns are an accepted design, 2026-10-04. Not yet implemented.
 
 UX is the first principle: performance and convenience. The screen opens a short stored list. It never walks the catalog in the browser.
 
-Look-alike is the first method. The engine stays open to later methods.
+Look-alike is the first method. Named patterns sit beside it. The engine stays open to later methods.
 
-This document supersedes the market-list stock board control ("All, HOSE, HNX, UPCOM, HCX") and the board-table row that counts HCX as stock (207 names). HCX stays the board code. Those names become `type=bond`. They are not a stock board, and they are not part of Stocks | Funds | Indices. The market list does not gain a bond browser in this slice. Look-alike does not walk bonds.
+This document supersedes the market-list stock board control ("All, HOSE, HNX, UPCOM, HCX") and the board-table row that counts HCX as stock (207 names). HCX stays the board code. Those names become `type=bond`. They are not a stock board, and they are not part of Stocks | Funds | Indices. The market list does not gain a bond browser in this slice. Look-alike does not walk bonds. A named-pattern scan skips them too.
 
 It also supersedes three product-design sentences that would build this slice wrong. The look-alike test "reference vs itself is rank 1": the reference is left out of the hit list. Section 3.3, "Same distance as shape patterns": kind `lookalike` is Pearson on min-max only. Section 2.6, "v1 Telegram is price alerts only", and "Alert on pattern hit" (section 3.4 and section 9): a successful scan sends one additional Telegram message. Price alerts stay as they are. Rule, shape, and the weekly schedule stay reserved.
 
@@ -21,9 +21,9 @@ The page opens a stored list. The arithmetic is about 3,000 names × 90 closes. 
 
 A `source=quote` bar is built from sampled last prices. A `source=dnse` bar is the exchange OHLC. `docs/backfill-workflow.md` keeps those writers apart, and it removes the 16:30 history job from the API process. The scan runs after the backfill pass that is allowed to write today's official bar.
 
-HCX is stored as stock. Section 2 moves those names to `type=bond`. Look-alike does not include them.
+HCX is stored as stock. Section 2 moves those names to `type=bond`. Look-alike does not include them. A named-pattern scan skips them too.
 
-The product design (`docs/product-design.md`) has three methodologies: rule (AND of clauses), shape (a drawn line or a date range on a symbol), and look-alike. This slice implements look-alike only. The stored model and the job do not assume Pearson is the only scorer.
+The product design (`docs/product-design.md`) has look-alike, named patterns, and two reserved methodologies: rule (AND of clauses) and shape (a drawn line or a date range on a symbol). Look-alike is built. Named patterns are specified in section 4 and are not built yet. The stored model and the job do not assume Pearson is the only scorer.
 
 ---
 
@@ -40,6 +40,8 @@ Stocks | Funds | Indices stay the market segments. The Stocks board control is A
 ---
 
 ## 3. Look-alike
+
+Built. The numbers in this section are locked.
 
 A match uses the last 90 trading days of closes: 90 `daily_bar` rows, not 90 calendar days. `window_end` is the as-of date (the backfill target date for this run). `window_start` is the date of the oldest of those 90 rows.
 
@@ -73,7 +75,74 @@ The run still completes. It stores how many names were eligible and how many wer
 
 ---
 
-## 4. When it runs
+## 4. Named patterns
+
+Accepted design, 2026-10-04. Not yet implemented.
+
+A named pattern is a rule on one ticker's own daily bars. The saved scan stores the pattern name. Kind is `named`. The method registry dispatches that kind. The method does not call Pearson. There is no reference ticker.
+
+The same job runs it, after the official daily bar, on the same run and hit tables. Section 5 is the timing. This section is the rule.
+
+### First build
+
+These four are the first build. Each name is one value of `spec.pattern` on kind `named`.
+
+| Pattern | `spec.pattern` | Rule |
+| --- | --- | --- |
+| Double bottom | `double_bottom` | Two lows at nearly the same price, with a peak between them. The swings are low, rally, low. The two lows sit in a small price band. The rally between them is the neckline. The second low is recent. |
+| Double top | `double_top` | Two highs at nearly the same price, with a trough between them. The swings are high, decline, high. The two highs sit in a small price band. The trough between them is the neckline. The second high is recent. |
+| Head and shoulders | `head_and_shoulders` | Three highs. The middle one is clearly higher. The two shoulders are close in price. The swings are shoulder, trough, higher head, trough, shoulder. The neckline runs through the two troughs. |
+| Inverse head and shoulders | `inverse_head_and_shoulders` | Three lows. The middle one is clearly lower. The two shoulders are close in price. The swings are shoulder, peak, lower head, peak, shoulder. The neckline runs through the two peaks. |
+
+### Later names
+
+Same kind. Not in the first build.
+
+| Pattern | `spec.pattern` | Rule |
+| --- | --- | --- |
+| Ascending triangle | `ascending_triangle` | Flat highs, rising lows |
+| Descending triangle | `descending_triangle` | Flat lows, falling highs |
+| Symmetrical triangle | `symmetrical_triangle` | Highs falling and lows rising |
+| Bull flag | `bull_flag` | A sharp rise, then a short downward drift |
+| Bear flag | `bear_flag` | A sharp drop, then a short upward drift |
+| Cup and handle | `cup_and_handle` | A rounded decline and recovery, then a small dip. Needs more than 90 sessions |
+
+Cup and handle uses a longer window than the first four. That length is still open.
+
+### Flow
+
+For one saved named pattern:
+
+1. Walk listed stocks and ETFs on HOSE, HNX, and UPCOM that have enough daily bars. Stored UPX counts as UPCOM. Skip bonds, HCX, indices, and futures (`type=futures`).
+2. Read recent daily high, low, and close. Closes alone are not enough. The first four use about 90 sessions. The exact count is still open.
+3. Mark swing highs and swing lows. A swing high is a bar whose high is the highest in a few bars on each side. A swing low is a bar whose low is the lowest in a few bars on each side. How many bars is still open.
+4. Test the last swings against that pattern's rule. A double bottom is low, rally, low. Head and shoulders is five swings: shoulder, trough, higher head, trough, shoulder. Each pattern has its own rule in the tables above. A name that does not have those swings is not a hit.
+5. Score the fit. Even tops or bottoms score higher. A head that barely sticks out scores lower. Keep hits above a floor and cap how many are stored. The floor and the cap are still open.
+6. Save the hit with the ticker, the date window, the score, and the swing dates and prices. `window_start` is the date of the earliest swing in the match. `window_end` is the as-of date. The chart draws those points on that ticker. There is no reference ticker.
+7. A hit is forming or confirmed. Forming: the swings are there, and price has not left the neckline. Confirmed: a close has broken the neckline. For a double bottom that close is above the peak. For a double top it is below the trough. For head and shoulders it is below the neckline through the two troughs. For inverse head and shoulders it is above the neckline through the two peaks. The list shows which.
+8. One Telegram message for a successful run. Section 7.
+
+A name is eligible when it is listed, `type` is `stock` or `etf`, the board is HOSE, HNX, UPCOM, or UPX, it has enough daily bars for the window, and the bar on the as-of date exists with `daily_bar.source` `dnse`. Excluded when the other checks would pass: `type=bond`, `type=index`, `type=futures`, board HCX. A missing bar on the as-of date is not eligible. A bar on that date with `source=quote` is not eligible.
+
+The run still completes. `eligible_count` is the names that pass that list. `compared_count` is how many of those names were tested against the rule.
+
+### Still open
+
+These are not locked. Look-alike's floor 0.85 and top 20 are not this method's floor or cap. The first four still read about 90 sessions; the exact count is open.
+
+- The price band ("a small price band", "nearly the same price", "close in price").
+- How many bars on each side mark a swing ("a few").
+- How recent the second low or the second high must be.
+- The score floor, and the cap on stored hits.
+- The exact session count for the first four ("about 90").
+- The cup-and-handle window. It needs more than 90 sessions, and it is not in the first build.
+- Confirmation for the later names. Forming and confirmed above apply to the first four, which have a neckline.
+
+Look-alike spec fields (`reference`, `min_score`, `top_k`) are not fields on kind `named`.
+
+---
+
+## 5. When it runs
 
 The scan follows a finished backfill pass that is allowed to include today. That is the target-end-date rule in `docs/backfill-workflow.md` section 4.2: at or after 16:30 ICT on a weekday, or a later catch-up, including a pass on Saturday or Sunday. `as_of` on the run is that target date.
 
@@ -81,19 +150,23 @@ The scan follows a finished backfill pass that is allowed to include today. That
 
 The scan reads `daily_bar`. It does not call DNSE. It does not run on page open. It is not added to the 30-minute API poll. The API process has no 16:30 history job for it to join.
 
-Compute inside the job. Do not store the normalized series. Do not store indicator points. Pure Python over lists of closes, the same approach as `backend/app/indicators.py`. Do not add numpy or pandas for this slice.
+Enabled `daily` patterns run in this same pass. A named pattern is not a second job.
+
+Compute inside the job. Do not store the normalized series. Do not store indicator points. The job loads each eligible ticker once. Look-alike reads the closes, pure Python, the same approach as `backend/app/indicators.py`. A named pattern reads high, low, and close from that load. Do not add numpy or pandas.
 
 ---
 
-## 5. Screen
+## 6. Screen
 
 The nav item is Scans. The design system already reserved that slot as "(Scans later)".
 
-The page is a short list of saved patterns, and the selected pattern's latest successful hits. Columns: ticker, name, score, as-of (`window_end`). The header shows the reference ticker and that as-of date.
+The page is a short list of saved patterns, and the selected pattern's latest successful hits. Columns: ticker, name, score, as-of (`window_end`). For look-alike, the header shows the reference ticker and that as-of date.
 
 The hits on screen are that pattern's `scan_hit` rows from its newest `scan_run` with `status=ok`. A newer failed run leaves those hits in place, with their as-of date.
 
-Empty when that pattern has no successful run yet, or its latest successful run has no hit at or above the floor. When the reference was not compared, the list is empty and the header says so.
+Empty when that pattern has no successful run yet, or its latest successful run has no hit at or above the floor. For look-alike, when the reference was not compared, the list is empty and the header says so.
+
+### Look-alike
 
 Defining a pattern is a small form:
 
@@ -105,7 +178,7 @@ Defining a pattern is a small form:
 | Top K | 20 |
 | Enabled | On |
 
-Window, min-max, and Pearson are fixed for this method and are not fields. The form saves kind `lookalike` and schedule `daily`. It does not offer `rule`, `shape`, `weekly`, or `both`. Saving creates the pattern or updates those fields. Saving does not start a run.
+Window, min-max, and Pearson are fixed for this method and are not fields. The form saves kind `lookalike` and schedule `daily`. It does not offer `named`, `rule`, `shape`, `weekly`, or `both`. Saving creates the pattern or updates those fields. Saving does not start a run.
 
 The reference field uses the same capped search as the market list. It calls `GET /api/symbols` only with a query, `limit` 50, and the same rank: ticker equals the query, then ticker starts with the query, then name contains the query. It asks for `type=stock` and `type=etf` only. It never requests the unfiltered catalog, and it does not widen to `bond` or `index`.
 
@@ -113,11 +186,33 @@ A hit opens a compare view. The reference is on the left. The match is on the ri
 
 There is no "scan now" button. A control on the page does not walk the catalog in the request.
 
+### Named pattern
+
+Not built yet. The page is the same Scans list. Columns add forming or confirmed. The header shows the pattern name and the as-of date. It does not show a reference ticker.
+
+Empty when that pattern has no successful run yet, or its latest successful run stored no hit above the floor. There is no "reference was not compared" state.
+
+The form:
+
+| Field | Starts at |
+| --- | --- |
+| Name | Required. Shown on the list and in Telegram |
+| Pattern | Required. One of the first four in section 4 |
+| Enabled | On |
+
+The form saves kind `named`, schedule `daily`, and `spec.pattern`. It does not ask for a reference ticker, a minimum score, or a top K. Those numbers are still open (section 4). Saving does not start a run.
+
+A hit opens that ticker's daily chart for the date window and draws the saved swing points. There is no second chart. The points come from the hit. They are not a user drawing.
+
+There is no "scan now" button.
+
 ---
 
-## 6. Telegram
+## 7. Telegram
 
-On a successful run, after that pattern's hits are stored, the scan job sends one message for the pattern. The message has the pattern name, the reference ticker, the as-of date, and each hit with its score. When scoring ran and nothing cleared the floor, the message is one line that says so, with that same name, reference, and date. When the reference was not compared, the message is one line that says so. That line is not a hit list.
+On a successful look-alike run, after that pattern's hits are stored, the scan job sends one message for the pattern. The message has the pattern name, the reference ticker, the as-of date, and each hit with its score. When scoring ran and nothing cleared the floor, the message is one line that says so, with that same name, reference, and date. When the reference was not compared, the message is one line that says so. That line is not a hit list.
+
+A named pattern uses the same send. The message has the pattern name, the as-of date, and each hit with its score and whether it is forming or confirmed. When the rule ran and nothing cleared the floor, the message is one line that says so, with that name and date. The message has no reference ticker.
 
 A failed run sends no Telegram message. It must not look like a fresh hit list.
 
@@ -125,17 +220,17 @@ Price-alert Telegram stays as it is (`evaluate_alerts` and `TelegramSender`). Th
 
 ---
 
-## 7. Stored model
+## 8. Stored model
 
-One engine. A method is a function: given the pattern spec and the prepared windows, it returns hit rows (ticker, score, window start, window end) or no match. The job loads bars once per eligible ticker, calls the method registered for `kind`, and writes hits. Adding a method does not change the job loop or the hit table.
+One engine. A method is a function: given the pattern spec and the prepared bars, it returns hit rows or no match. The job loads bars once per eligible ticker, calls the method registered for `kind`, and writes hits. Kind `named` is one more function in that registry. Adding it does not add a run table or a hit table.
 
 ### `pattern_def`
 
 | Column | Meaning |
 | --- | --- |
 | `name` | Shown on the list, the header, and the Telegram message |
-| `kind` | `lookalike` now. `rule` and `shape` are reserved |
-| `spec` | JSON. Look-alike holds `reference`, `min_score`, `top_k` |
+| `kind` | `lookalike` is built. `named` is accepted and not built. `rule` and `shape` are reserved |
+| `spec` | JSON. Look-alike holds `reference`, `min_score`, `top_k`. A named pattern holds `pattern` (section 4) |
 | `schedule` | `daily` now. `weekly` and `both` are reserved |
 | `enabled` | Disabled patterns are stored, shown, and not scored |
 
@@ -151,8 +246,8 @@ One row per enabled `daily` pattern in the pass. A pattern that clears nothing s
 | `started_at` | When scoring started |
 | `finished_at` | When that pattern's scoring stopped |
 | `status` | `ok` or `failed` |
-| `eligible_count` | Names that met section 3 |
-| `compared_count` | Names passed to Pearson for this pattern |
+| `eligible_count` | Names that met that method's universe. Section 3 for look-alike. Section 4 for a named pattern |
+| `compared_count` | Look-alike: names passed to Pearson. Named pattern: names tested against the rule |
 | `as_of` | Backfill target date. Hit `window_end` is this date |
 
 Hits for that pattern are written only after its scoring finishes. Status becomes `ok` only after those hits are committed. On failure the row is `failed`, that run has no hits, and this pattern's previous `ok` run stays the one the screen reads. The next pattern in the pass still runs. The loop stays one load of bars, then one registered method per pattern.
@@ -163,32 +258,37 @@ Hits for that pattern are written only after its scoring finishes. Status become
 | --- | --- |
 | `run` | The `scan_run` |
 | `pattern` | The `pattern_def` |
-| `ticker` | The other name. Never the reference, for look-alike |
-| `score` | Pearson, from −1 to 1. A later yes/no rule stores 1 for a hit |
-| `window_start` | Oldest session in the 90 |
+| `ticker` | The matched name. For look-alike, never the reference |
+| `score` | Look-alike: Pearson, from −1 to 1. Named pattern: fit of the swings. Even tops or bottoms score higher. A head that barely sticks out scores lower. The floor is still open. A later yes/no rule stores 1 for a hit |
+| `window_start` | Look-alike: oldest session in the 90. Named pattern: date of the earliest swing in the match |
 | `window_end` | As-of date |
+| `swings` | Named pattern: the swing dates and prices, in the order the rule names them. Look-alike leaves this empty |
+| `state` | Named pattern: `forming` or `confirmed`. Look-alike leaves this empty |
 
-Same columns for every method. Do not invent a second hit table.
+Shared columns stay on the one hit table. Do not invent a second hit table.
 
 ---
 
-## 8. Later methods
+## 9. Later methods
 
-These are extension points. They are not in this slice. Each one is a `kind` or a `schedule` the registry and the job already have a place for.
+These are extension points. Rule, shape, other similarity, and the weekly schedule are not in the current build. Further named patterns plug into kind `named` (section 4) and are not in the first named-pattern build.
 
 | Later | What it plugs into |
 | --- | --- |
+| More named patterns | Same kind `named`, new `spec.pattern` values. Ascending triangle, descending triangle, symmetrical triangle, bull flag, bear flag, cup and handle. Section 4 |
 | Rule | `kind=rule`. Spec is an AND of clauses. The method computes close, SMA, ATR, and volume average from the window it was given. No stored indicator series. A hit stores score 1. No match returns no row |
 | Shape | `kind=shape`. Spec is a template of length ≤ 90 — a drawn polyline, or a historical range such as HPG between two dates — and a minimum score. Same normalize-and-score slot, different spec |
 | Other similarity | z-score, and 1 − cosine, as spec fields on a future method. Look-alike's spec does not offer them |
 | Weekly | `schedule` `weekly` or `both`. This job does not select them |
-| Bonds or indices | Not loaded into the prepared windows |
+| Bonds, indices, or futures | Not loaded into the prepared windows |
 
-The look-alike function stays Pearson on min-max. A new similarity does not become a switch on kind `lookalike`.
+The look-alike function stays Pearson on min-max. A new similarity does not become a switch on kind `lookalike`. A new chart pattern does not become a switch on kind `lookalike`. It is another `spec.pattern` on kind `named`, or a later kind of its own.
 
 ---
 
-## 9. Tests
+## 10. Tests
+
+Look-alike (built):
 
 - Two identical normalized series score about 1. A reversed series is below 0.85. The reference ticker is not in its own hits.
 - A flat candidate is skipped.
@@ -197,9 +297,17 @@ The look-alike function stays Pearson on min-max. A new similarity does not beco
 - A failed run leaves the previous hits queryable.
 - Kind `lookalike` is dispatched through the method registry. The job does not call Pearson directly.
 
+Named patterns (not built yet):
+
+- Kind `named` is dispatched through the method registry. The method does not call Pearson. The pattern has no reference ticker.
+- The saved scan stores `spec.pattern`. The first build accepts the four names in section 4.
+- A hit stores the swing dates and prices, and `forming` or `confirmed`.
+- A bond, an index, HCX, and a future are not eligible.
+- A failed run leaves the previous hits queryable, same as look-alike.
+
 ---
 
-## 10. Out of scope
+## 11. Out of scope
 
 - A "scan now" button, or any request that walks the catalog to score it.
 - numpy or pandas.
@@ -207,3 +315,5 @@ The look-alike function stays Pearson on min-max. A new similarity does not beco
 - A bond browser on the market list, or a rewrite of the HCX board code.
 - Rule forms, shape drawing, and a weekly run.
 - Changing price-alert delivery.
+- Triangles, flags, and cup and handle in the first named-pattern build.
+- Copying look-alike's 0.85 or top 20 onto a named pattern. Those parameters are still open.
