@@ -14,6 +14,9 @@ class Hit:
     score: float
     window_start: date
     window_end: date
+    state: str | None = None
+    swings: dict | None = None
+    pattern: str | None = None
 
 
 @dataclass(frozen=True)

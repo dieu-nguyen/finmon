@@ -2,6 +2,7 @@ import type { Bar } from "../api";
 import type { Drawing } from "./drawings";
 import { categoryIndex } from "./drawings";
 import { findIndicator, indicatorPlot, type IndicatorPlot, type IndicatorReadout, type PlotColors } from "./indicators";
+import type { PatternMark } from "./patternMarks";
 
 export type ChartColors = PlotColors & {
   border: string;
@@ -9,7 +10,11 @@ export type ChartColors = PlotColors & {
   text: string;
 };
 
-type Mark = { yAxis: number; lineStyle: { color: string }; label?: { formatter: string } };
+type AxisMark = { yAxis?: number; lineStyle?: { color?: string; type?: string }; label?: { formatter?: string } };
+type SegmentMark = [
+  { coord: [string, number]; lineStyle?: { color?: string; type?: string } },
+  { coord: [string, number] },
+];
 
 export type DailySeries = {
   type: string;
@@ -17,8 +22,12 @@ export type DailySeries = {
   yAxisIndex?: number;
   xAxisIndex?: number;
   data?: unknown;
-  markLine?: { symbol?: string; data?: Mark[]; label?: { color?: string } };
-  markPoint?: { data: unknown[] };
+  markLine?: {
+    symbol?: string;
+    data?: Array<AxisMark | SegmentMark>;
+    label?: { color?: string };
+  };
+  markPoint?: { data: unknown[]; label?: { color?: string; fontSize?: number } };
   itemStyle?: unknown;
   showSymbol?: boolean;
   lineStyle?: unknown;
@@ -102,6 +111,7 @@ function categoryAxis(dates: string[], gridIndex: number, colors: ChartColors, s
 export function buildDailyOption(input: {
   bars: Bar[];
   drawings: Drawing[];
+  patternMark?: PatternMark | null;
   indicatorIds: string[];
   indicatorData: Record<string, unknown> | null;
   refPrice?: number | null;
@@ -122,7 +132,7 @@ export function buildDailyOption(input: {
   const separates = plots.filter((plot) => plot.pane === "separate");
   const volumeIndex = 1 + separates.length;
 
-  const markLineData: Mark[] = [];
+  const markLineData: Array<AxisMark | SegmentMark> = [];
   if (input.refPrice) markLineData.push({ yAxis: input.refPrice, lineStyle: { color: colors.faint }, label: { formatter: "ref" } });
   if (input.ceiling) markLineData.push({ yAxis: input.ceiling, lineStyle: { color: colors.up }, label: { formatter: "ceil" } });
   if (input.floor) markLineData.push({ yAxis: input.floor, lineStyle: { color: colors.down }, label: { formatter: "floor" } });
@@ -131,12 +141,29 @@ export function buildDailyOption(input: {
       markLineData.push({ yAxis: drawing.points[0].price, lineStyle: { color: colors.accent } });
     }
   }
-  const markPoint = drawings
-    .filter((drawing) => drawing.tool === "pin" || drawing.tool === "text")
-    .map((drawing) => ({
-      coord: [drawing.points[0]?.date, drawing.points[0]?.price],
-      value: drawing.tool === "text" ? "note" : "pin",
-    }));
+  const neck = input.patternMark?.neckline ?? [];
+  if (neck.length >= 2) {
+    const segment: SegmentMark = [
+      { coord: [neck[0].date, neck[0].price], lineStyle: { color: colors.warn, type: "dashed" } },
+      { coord: [neck[1].date, neck[1].price] },
+    ];
+    markLineData.push(segment);
+  }
+  const markPoint = [
+    ...drawings
+      .filter((drawing) => drawing.tool === "pin" || drawing.tool === "text")
+      .map((drawing) => ({
+        coord: [drawing.points[0]?.date, drawing.points[0]?.price],
+        value: drawing.tool === "text" ? "note" : "pin",
+      })),
+    ...(input.patternMark?.points ?? []).map((point) => ({
+      coord: [point.date, point.price],
+      value: point.role || "swing",
+      symbol: "circle",
+      symbolSize: 9,
+      itemStyle: { color: colors.warn },
+    })),
+  ];
   const graphics: unknown[] = [];
   for (const drawing of drawings) {
     if (drawing.tool === "trend" && drawing.points.length >= 2) {
@@ -217,7 +244,7 @@ export function buildDailyOption(input: {
         data: bars.map((bar) => [bar.open, bar.close, bar.low, bar.high]),
         itemStyle: { color: colors.up, color0: colors.down, borderColor: colors.up, borderColor0: colors.down },
         markLine: { symbol: "none", data: markLineData, label: { color: colors.faint } },
-        markPoint: { data: markPoint },
+        markPoint: { data: markPoint, label: { color: colors.text, fontSize: 10 } },
       },
       ...priceLines,
       {

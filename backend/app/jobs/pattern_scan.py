@@ -15,21 +15,33 @@ WINDOW = 90
 _BOARDS = ("HOSE", "HNX", "UPCOM", "UPX")
 
 
-def load_windows(db: Session, as_of: date) -> tuple[dict[str, Window], int]:
-    symbols = db.scalars(
-        select(Symbol).where(
-            Symbol.listed.is_(True),
-            Symbol.type.in_(("stock", "etf")),
-            Symbol.board.in_(_BOARDS),
-        )
-    ).all()
-    tickers = [row.ticker for row in symbols]
+def _window_from_group(group: list, as_of: date) -> Window | None:
+    group.sort(key=lambda item: item.date)
+    if len(group) < WINDOW:
+        return None
+    newest = group[-1]
+    if newest.date != as_of or newest.source != "dnse":
+        return None
+    chosen = group[-WINDOW:]
+    return Window(
+        closes=[float(item.close) for item in chosen],
+        window_start=chosen[0].date,
+        window_end=chosen[-1].date,
+        highs=[float(item.high) for item in chosen],
+        lows=[float(item.low) for item in chosen],
+        dates=[item.date for item in chosen],
+    )
+
+
+def _fetch_windows(db: Session, as_of: date, tickers: list[str]) -> dict[str, Window]:
     if not tickers:
-        return {}, 0
+        return {}
     ranked = (
         select(
             DailyBar.ticker.label("ticker"),
             DailyBar.date.label("date"),
+            DailyBar.high.label("high"),
+            DailyBar.low.label("low"),
             DailyBar.close.label("close"),
             DailyBar.source.label("source"),
             func.row_number().over(partition_by=DailyBar.ticker, order_by=DailyBar.date.desc()).label("rn"),
@@ -38,26 +50,47 @@ def load_windows(db: Session, as_of: date) -> tuple[dict[str, Window], int]:
         .subquery()
     )
     rows = db.execute(
-        select(ranked.c.ticker, ranked.c.date, ranked.c.close, ranked.c.source).where(ranked.c.rn <= WINDOW)
+        select(ranked.c.ticker, ranked.c.date, ranked.c.high, ranked.c.low, ranked.c.close, ranked.c.source).where(
+            ranked.c.rn <= WINDOW
+        )
     ).all()
     grouped: dict[str, list] = {}
     for row in rows:
         grouped.setdefault(row.ticker, []).append(row)
     windows: dict[str, Window] = {}
     for ticker, group in grouped.items():
-        group.sort(key=lambda item: item.date)
-        if len(group) < WINDOW:
-            continue
-        newest = group[-1]
-        if newest.date != as_of or newest.source != "dnse":
-            continue
-        chosen = group[-WINDOW:]
-        windows[ticker] = Window(
-            closes=[float(item.close) for item in chosen],
-            window_start=chosen[0].date,
-            window_end=chosen[-1].date,
+        window = _window_from_group(group, as_of)
+        if window is not None:
+            windows[ticker] = window
+    return windows
+
+
+def load_windows(db: Session, as_of: date) -> tuple[dict[str, Window], int]:
+    symbols = db.scalars(
+        select(Symbol).where(
+            Symbol.listed.is_(True),
+            Symbol.type.in_(("stock", "etf")),
+            Symbol.board.in_(_BOARDS),
         )
+    ).all()
+    windows = _fetch_windows(db, as_of, [row.ticker for row in symbols])
     return windows, len(windows)
+
+
+def load_one_window(db: Session, ticker: str) -> Window | None:
+    as_of = db.scalar(select(func.max(DailyBar.date)).where(DailyBar.ticker == ticker, DailyBar.source == "dnse"))
+    if as_of is None:
+        return None
+    return _fetch_windows(db, as_of, [ticker]).get(ticker)
+
+
+def format_named_message(name: str, as_of: date, result: MethodResult) -> str:
+    if not result.hits:
+        return f"{name}: as of {as_of.isoformat()} — nothing cleared the floor"
+    lines = [name, f"as of {as_of.isoformat()}"]
+    for hit in result.hits:
+        lines.append(f"{hit.ticker} {hit.score:.4f} {hit.state}")
+    return "\n".join(lines)
 
 
 def format_scan_message(name: str, reference: str, as_of: date, result: MethodResult) -> str:
@@ -124,12 +157,18 @@ def _score_one(
                 score=hit.score,
                 window_start=hit.window_start,
                 window_end=hit.window_end,
+                swings=hit.swings,
+                state=hit.state,
             )
         )
     db.commit()
-    reference = str(spec.get("reference") or "").upper()
+    if pattern.kind == "named":
+        message = format_named_message(pattern.name, as_of, result)
+    else:
+        reference = str(spec.get("reference") or "").upper()
+        message = format_scan_message(pattern.name, reference, as_of, result)
     try:
-        sender.send(format_scan_message(pattern.name, reference, as_of, result))
+        sender.send(message)
     except Exception:
         return
 

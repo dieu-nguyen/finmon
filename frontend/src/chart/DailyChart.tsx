@@ -5,6 +5,7 @@ import { IconButton, formatDong } from "../design-system";
 import { ToolGlyph } from "../design-system/icons";
 import { buildDailyOption, type ChartColors } from "./dailyOption";
 import type { Drawing, DrawingTool } from "./drawings";
+import type { PatternMark } from "./patternMarks";
 import { DEFAULT_INDICATOR_IDS } from "./indicators";
 import { IndicatorPicker } from "./IndicatorPicker";
 
@@ -19,6 +20,7 @@ export function DailyChart({
   indicatorData = null,
   onIndicator,
   drawings,
+  patternMark = null,
   tool,
   onTool,
   onDrawings,
@@ -32,6 +34,7 @@ export function DailyChart({
   indicatorData?: Record<string, unknown> | null;
   onIndicator: (ids: string[]) => void;
   drawings: Drawing[];
+  patternMark?: PatternMark | null;
   tool: DrawingTool;
   onTool: (t: DrawingTool) => void;
   onDrawings: (d: Drawing[]) => void;
@@ -50,8 +53,8 @@ export function DailyChart({
       accent: cssVar("--accent"),
       warn: cssVar("--warn"),
     };
-    return buildDailyOption({ bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, colors });
-  }, [bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor]);
+    return buildDailyOption({ bars, drawings, patternMark, indicatorIds, indicatorData, refPrice, ceiling, floor, colors });
+  }, [bars, drawings, patternMark, indicatorIds, indicatorData, refPrice, ceiling, floor]);
 
   const tools: { id: DrawingTool; label: string }[] = [
     { id: "pan", label: "pan" },

@@ -15,7 +15,7 @@ Audience: one operator (you). Single-user is enough for v1.
 
 ## 1. Purpose
 
-See the market, mark your own thinking on it, get told when price hits a level you chose, and after the official daily bar is stored, see which names look like a reference you picked. Named-pattern hits, from that ticker's own swings, are accepted and not built yet.
+See the market, mark your own thinking on it, get told when price hits a level you chose, and after the official daily bar is stored, see which names look like a reference you picked or which of the four named patterns that ticker's own swings match.
 
 Success looks like:
 
@@ -23,9 +23,9 @@ Success looks like:
 - You can draw and write on that chart, plus keep a longer note beside it; those survive refresh.
 - When last price crosses an alert you set, Telegram gets a message on that 30-minute poll, while the API is up in session.
 - After the backfill pass that writes the official bar, a job scores enabled look-alike patterns. You open a short hit list, not the catalog.
-- Named patterns are accepted and not built. The same job will score a saved pattern from that ticker's own swings. Lookback is 90 sessions. The last swing or the confirming close is inside the last 10 trading sessions. A hit opens that ticker's chart. From a ticker, the same rule reports which of the four match.
+- The same job scores a saved named pattern from that ticker's own swings. Lookback is 90 sessions. The last swing or the confirming close is inside the last 10 trading sessions. A hit opens that ticker's chart. From a ticker, the same rule reports which of the four match.
 
-The first three bullets are **v1**. Look-alike is **v1.1**. Named patterns are the next scan kind. They are not built.
+The first three bullets are **v1**. Look-alike is **v1.1**. Named patterns are the next scan kind. They are built.
 
 Out of scope for this product:
 
@@ -104,7 +104,7 @@ Universe: listed stock and ETF on HOSE, HNX, and UPCOM (stored UPX counts as UPC
 
 The screen is **Scans**: a short hit list. A hit opens two charts side by side for those 90 sessions. A successful run sends one Telegram message. A failed run keeps the previous hits and sends no hit-list message.
 
-Named patterns are accepted and not built. They sit beside look-alike. A saved scan stores the pattern name and kind `named`. The job reads the last 90 sessions of daily high, low, and close, marks swing highs and lows, and tests the last swings against that pattern's rule. Those 90 sessions are how far back the current pattern may start. Freshness is the last 10 trading sessions, about two calendar weeks. A pattern from last week still matches. One that ended about a month ago, including a stretch that sits only in the middle of the 90, does not. Missing the day it formed does not drop it: the next run reads the stored bars. The first build is double bottom, double top, head and shoulders, and inverse head and shoulders. A hit stores the ticker, the date window, the score, and the swing dates and prices. The list shows forming or confirmed. Forming is still inside those 10 sessions and has not left the neckline. Confirmed means the neckline break is inside those 10 sessions. The chart draws those points on that ticker. From a ticker you can ask which of the four match. That check uses the same rule as the scan. There is no reference ticker. Pearson is not used. Triangles, flags, and cup and handle come later. The price band, swing width, score floor, and cap are still open.
+Named patterns sit beside look-alike. A saved scan stores the pattern name and kind `named`. The job reads the last 90 sessions of daily high, low, and close, marks swing highs and lows, and tests the last swings against that pattern's rule. Those 90 sessions are how far back the current pattern may start. Freshness is the last 10 trading sessions, about two calendar weeks. A pattern from last week still matches. One that ended about a month ago, including a stretch that sits only in the middle of the 90, does not. Missing the day it formed does not drop it: the next run reads the stored bars. The first build is double bottom, double top, head and shoulders, and inverse head and shoulders. A swing is a strict extreme over five bars on each side. Inside the last five sessions the right side uses only the bars that exist. The pair must sit within 3% of the higher price. The head must clear the higher shoulder by at least 3%, or sit at least 3% below the lower shoulder for the inverse. The score runs from 0 to 1. The floor is 0.70. The market scan keeps at most 20 hits. A hit stores the ticker, the date window, the score, and the swing dates and prices. The list shows forming or confirmed. Forming is still inside those 10 sessions and has not left the neckline. Confirmed means the neckline break is inside those 10 sessions. The chart draws those points and the neckline on that ticker. From a ticker you can ask which of the four match. That check uses the same rule as the scan and keeps at most one hit per pattern. There is no reference ticker. Pearson is not used. Triangles, flags, and cup and handle come later.
 
 Rules, shapes, and a weekly schedule are reserved. They are not in this slice.
 
@@ -114,7 +114,7 @@ Detail: `docs/pattern-compare.md`.
 
 ## 3. Pattern types
 
-Look-alike is the method the job scores today. Named patterns are accepted beside it and are not built yet. You enable the patterns you want. Rule patterns, shape patterns, and a weekly schedule stay reserved.
+Look-alike is the method the job scores for a reference ticker. Named patterns sit beside it and are built. You enable the patterns you want. Rule patterns, shape patterns, and a weekly schedule stay reserved.
 
 ### 3.1 Look-alike
 
@@ -122,9 +122,9 @@ Pick a reference symbol. Compare its last 90 daily closes to other listed stocks
 
 ### 3.2 Named patterns
 
-Accepted. Not built yet.
+Built.
 
-Save a pattern by name. The job tests that rule on each ticker's own daily high, low, and close. Lookback is 90 sessions. The last swing or the confirming close falls in the last 10 trading sessions. It does not use a reference ticker or Pearson. First build: double bottom, double top, head and shoulders, inverse head and shoulders. A hit is forming or confirmed. The chart draws the swing points on that ticker. From a ticker, the same rule reports which of the four match.
+Save a pattern by name. The job tests that rule on each ticker's own daily high, low, and close. Lookback is 90 sessions. The last swing or the confirming close falls in the last 10 trading sessions. A swing uses five bars on the left and up to five on the right. The pair sits within 3% of the higher price. The head clears the higher shoulder by at least 3% (inverse: at least 3% below the lower shoulder). The score runs from 0 to 1 with a floor of 0.70. The market scan keeps at most 20 hits. It does not use a reference ticker or Pearson. First build: double bottom, double top, head and shoulders, inverse head and shoulders. A hit is forming or confirmed. The chart draws the swing points and the neckline on that ticker. From a ticker, the same rule reports which of the four match, at most one hit per pattern.
 
 Detail: `docs/pattern-compare.md`.
 
@@ -152,7 +152,7 @@ Detail: `docs/pattern-compare.md`.
 | Company | Vnstock | On demand. One JSON document per ticker, 24h cache. No statement warehouse |
 | Indicators | Local from `daily_bar` | When the chart asks, on that candle window. Not stored |
 | Price-alert Telegram | Bot API | When an alert fires on the 30-minute poll |
-| Pattern Telegram | Bot API | One message from a successful pattern run (look-alike today; named patterns when that method is built) |
+| Pattern Telegram | Bot API | One message from a successful pattern run (look-alike or a named pattern) |
 
 The API has no 16:30 history job.
 
@@ -188,7 +188,7 @@ Small units, each with one job:
 - **Market store**: symbols, daily bars, last quote snapshot, ingest watermarks.
 - **Annotation store**: drawings, chart notes, page notes.
 - **Alert engine**: load rules, compare to last price, write delivery log, call Telegram once per fire. The 30-minute poll only.
-- **Pattern job**: no DNSE call. Runs after the backfill pass that writes the official bar. Look-alike on 90 closes. Named patterns, when built, on one ticker's swings: 90 sessions of lookback, fresh within the last 10 trading sessions. Writes hits. One Telegram message when the run succeeds. A one-ticker check uses that same match rule and is not a second job.
+- **Pattern job**: no DNSE call. Runs after the backfill pass that writes the official bar. Look-alike on 90 closes. Named patterns on one ticker's swings: 90 sessions of lookback, fresh within the last 10 trading sessions, floor 0.70, at most 20 hits. Writes hits. One Telegram message when the run succeeds. A one-ticker check uses that same match rule and is not a second job.
 - **API scheduler**: 30-minute watchlist poll, weekdays in session (ICT), including 15:00. No 16:30 history job. Skip Saturday and Sunday; skip VN holidays when a holiday list exists.
 - **Web app**: market list, chart and drawings (Apache ECharts), notes, price alerts, Scans.
 - **Store**: MySQL 8.
@@ -208,7 +208,7 @@ Compute chart indicators in the app (or a pure function module), not in SQL, and
 - `page_note`: ticker, body, updated_at (+ `page_note_revision` optional)
 - `price_alert`: ticker, op (gte/lte), price, once|repeat, enabled, last_fired_at
 - `alert_delivery`: alert_id, sent_at, telegram_ok, payload
-- `pattern_def`: name, kind (`lookalike` built; `named` accepted, not built; `rule` and `shape` reserved), spec JSON, schedule (`daily` now; `weekly` and `both` reserved), enabled. A named pattern stores its pattern name in spec.
+- `pattern_def`: name, kind (`lookalike` built; `named` built; `rule` and `shape` reserved), spec JSON, schedule (`daily` now; `weekly` and `both` reserved), enabled. A named pattern stores its pattern name in spec.
 - `scan_run`: id, started_at, finished_at, status
 - `scan_hit`: run_id, ticker, pattern_id, score, window_start, window_end. A named-pattern hit also stores the swing dates and prices, and forming or confirmed.
 
@@ -232,7 +232,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 - Indicator functions: golden values on a fixed series. The series returned with a chart matches that candle window.
 - Alert engine: price 100, alert ≥ 100 fires; 99.99 does not; `once` does not double-send.
 - Look-alike: two identical normalized series score about 1. The reference ticker is not in its own hits. A window whose newest bar is `source=quote` is not scored.
-- Named patterns: specified in `docs/pattern-compare.md`. Not built yet.
+- Named patterns: a fresh double bottom matches; the same shape ending 30 sessions ago does not. A clear head and shoulders matches; a flat three-high does not. The one-ticker check and the market scan agree. See `docs/pattern-compare.md`.
 - UI: a market page of 50, chart load, save drawing, save page note, create alert (browser or component tests).
 
 ---
@@ -251,9 +251,9 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 
 6. Job after the official bar, Scans hit list, side-by-side charts for those 90 sessions, one Telegram message
 
-**Accepted, not built — named patterns**
+**Named patterns**
 
-7. Same job and the same hit tables. Kind `named`. First four patterns. Lookback is 90 sessions. Freshness is the last 10 trading sessions, on the market scan and from a ticker. The list shows forming or confirmed. The chart draws the swings on that ticker.
+7. Same job and the same hit tables. Kind `named`. First four patterns. Lookback is 90 sessions. Freshness is the last 10 trading sessions, on the market scan and from a ticker. Swing width is five bars. Pair tolerance and head prominence are 3%. Floor 0.70. At most 20 market-scan hits, and at most one hit per pattern on a ticker. The list shows forming or confirmed. The chart draws the swings and the neckline on that ticker.
 
 **Reserved**
 
@@ -276,7 +276,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 - Market list: one segment, 50 rows, ordered by ticker. Search replaces the page.
 - Indicators: daily only, computed on the chart's from/to window, not stored. The chart shows SMA 20.
 - Pattern window (look-alike): 90 trading-day closes, Pearson on min-max, floor 0.85, top 20, reference excluded
-- Named patterns: 90 sessions of lookback for the current pattern. Freshness is the last 10 trading sessions, on the market scan and the one-ticker check. Kind `named` and the pattern name on the saved scan are decided. The price band, bars on each side of a swing, score floor, and hit cap are still open.
+- Named patterns: 90 sessions of lookback for the current pattern. Freshness is the last 10 trading sessions, on the market scan and the one-ticker check. A swing is five bars on the left and up to five on the right. The pair and the head use a 3% band. The score runs from 0 to 1 with a floor of 0.70. The market scan keeps at most 20 hits. The one-ticker check keeps at most one hit per pattern.
 - Alerts: Telegram on last-price rules. Pattern Telegram is a separate message from the scan job.
 - Single user, no public market data API
 - Language of UI: English labels OK; tickers and company names as returned (Vietnamese)

@@ -3,7 +3,7 @@
 Build spec for pattern compare in `docs/product-design.md`.
 Decisions: `docs/adr/0004-hcx-bonds.md`, `docs/adr/0005-pattern-compare-job.md`, and `docs/adr/0006-named-pattern-scan.md`.
 
-Look-alike is built. Named patterns are an accepted design, 2026-10-04. Not yet implemented.
+Look-alike is built. Named patterns are built.
 
 UX is the first principle: performance and convenience. The screen opens a short stored list. It never walks the catalog in the browser.
 
@@ -23,7 +23,7 @@ A `source=quote` bar is built from sampled last prices. A `source=dnse` bar is t
 
 HCX is stored as stock. Section 2 moves those names to `type=bond`. Look-alike does not include them. A named-pattern scan skips them too.
 
-The product design (`docs/product-design.md`) has look-alike, named patterns, and two reserved methodologies: rule (AND of clauses) and shape (a drawn line or a date range on a symbol). Look-alike is built. Named patterns are specified in section 4 and are not built yet. The stored model and the job do not assume Pearson is the only scorer.
+The product design (`docs/product-design.md`) has look-alike, named patterns, and two reserved methodologies: rule (AND of clauses) and shape (a drawn line or a date range on a symbol). Look-alike is built. Named patterns are specified in section 4 and are built. The stored model and the job do not assume Pearson is the only scorer.
 
 ---
 
@@ -77,7 +77,7 @@ The run still completes. It stores how many names were eligible and how many wer
 
 ## 4. Named patterns
 
-Accepted design, 2026-10-04. Not yet implemented.
+Built. The numbers in this section are locked. Look-alike's floor 0.85 and top 20 stay on look-alike.
 
 A named pattern is a rule on one ticker's own daily bars. The saved scan stores the pattern name. Kind is `named`. The method registry dispatches that kind. The method does not call Pearson. There is no reference ticker.
 
@@ -123,15 +123,27 @@ Missing the day the pattern formed does not drop it. The next run reads stored d
 
 Forming: the swings are in place, price has not left the neckline, and the pattern is still current inside those 10 sessions. Confirmed: a close has broken the neckline, and that break falls within the last 10 trading sessions.
 
+### Locked numbers
+
+A swing high is strictly the highest high of five bars on the left and up to five on the right. A swing low is the same rule on the low. Inside the last five sessions the right side uses only the bars that exist, including none, so a pattern whose last swing falls there can still match.
+
+The two bottoms, two tops, or two shoulders must sit within 3% of each other. The gap is the difference divided by the higher price. A wider gap is not a match. The pair component of the score is 1 when the two prices are equal and 0 when the gap is 3%.
+
+The head must clear the higher shoulder by at least 3%. Inverse head and shoulders: the head must sit at least 3% below the lower shoulder. The head component is 0 at that 3% minimum and 1 when the head clears the shoulder by 6% or more. A smaller head is not a match.
+
+Double top and double bottom use the pair component. Head and shoulders and the inverse use the average of the pair component and the head component. The score runs from 0 to 1. A perfect pair and a clear head score 1. The floor is 0.70. Below that, no hit. A double top or double bottom clears the floor when the gap is at most 0.9% of the higher price. Equal shoulders clear it when the head is at least 4.2% beyond the shoulder used for prominence.
+
+The market scan keeps at most 20 hits for one saved pattern, highest score first. An equal score keeps the ticker that sorts first. The one-ticker check returns each of the four that clears 0.70, and at most one hit per pattern: the best current one. An equal score on that ticker keeps the later last swing.
+
 ### Flow
 
 For one saved named pattern, the market scan:
 
 1. Walk listed stocks and ETFs on HOSE, HNX, and UPCOM that have enough daily bars. Stored UPX counts as UPCOM. Skip bonds, HCX, indices, and futures (`type=futures`).
-2. Read the last 90 sessions of daily high, low, and close. Closes alone are not enough. Those 90 sessions are the lookback for the current pattern. Freshness is the last 10 trading sessions. The price band and the swing width stay open.
-3. Mark swing highs and swing lows. A swing high is a bar whose high is the highest in a few bars on each side. A swing low is a bar whose low is the lowest in a few bars on each side. How many bars is still open.
+2. Read the last 90 sessions of daily high, low, and close. Closes alone are not enough. Those 90 sessions are the lookback for the current pattern. Freshness is the last 10 trading sessions. The price band is 3%. The swing width is five bars.
+3. Mark swing highs and swing lows with the five-bar rule in Locked numbers, including the shorter right side at the edge of the window.
 4. Test the last swings against that pattern's rule. A double bottom is low, rally, low. Head and shoulders is five swings: shoulder, trough, higher head, trough, shoulder. Each pattern has its own rule in the tables above. A name that does not have those swings is not a hit. A pattern whose last swing, or whose confirming close, falls outside the last 10 trading sessions is not a hit.
-5. Score the fit. Even tops or bottoms score higher. A head that barely sticks out scores lower. Keep hits above a floor and cap how many are stored. The floor and the cap are still open.
+5. Score the fit from 0 to 1, as in Locked numbers. Even tops or bottoms score higher. A head that barely sticks out scores lower. Keep hits at or above 0.70. The market scan stores at most 20, highest score first.
 6. Save the hit with the ticker, the date window, the score, and the swing dates and prices. `window_start` is the date of the earliest swing in the match. `window_end` is the as-of date. The chart draws those points on that ticker. There is no reference ticker.
 7. A hit is forming or confirmed. Forming: the swings are in place, price has not left the neckline, and the pattern is still current inside the last 10 trading sessions. Confirmed: a close has broken the neckline, and that break falls within the last 10 trading sessions. For a double bottom that close is above the peak. For a double top it is below the trough. For head and shoulders it is below the neckline through the two troughs. For inverse head and shoulders it is above the neckline through the two peaks. The list shows which.
 8. One Telegram message for a successful run. Section 7.
@@ -142,7 +154,7 @@ The run still completes. `eligible_count` is the names that pass that list. `com
 
 ### One ticker
 
-Accepted design, 2026-10-04. Not yet implemented.
+Built.
 
 The market scan is one saved pattern across many tickers. From a ticker, you can ask the other way: which of the four patterns that ticker has.
 
@@ -154,11 +166,8 @@ The check does not walk the catalog. It does not call Pearson. It does not send 
 
 ### Still open
 
-These are not locked. Look-alike's floor 0.85 and top 20 are not this method's floor or cap. The first four read the last 90 sessions as lookback. Freshness is the last 10 trading sessions. Both counts are locked.
+Look-alike's floor 0.85 and top 20 are not this method's floor or cap. The first four read the last 90 sessions as lookback. Freshness is the last 10 trading sessions. The price band, the five-bar swing, the 0.70 floor, and the cap of 20 are locked above.
 
-- The price band ("a small price band", "nearly the same price", "close in price").
-- How many bars on each side mark a swing ("a few").
-- The score floor, and the cap on stored hits.
 - The cup-and-handle window. It needs more than 90 sessions, and it is not in the first build.
 - Confirmation for the later names. Forming and confirmed above apply to the first four, which have a neckline.
 
@@ -212,7 +221,7 @@ There is no "scan now" button. A control on the page does not walk the catalog i
 
 ### Named pattern
 
-Not built yet. The page is the same Scans list. Columns add forming or confirmed. The header shows the pattern name and the as-of date. It does not show a reference ticker.
+The page is the same Scans list. Columns add the pattern, and forming or confirmed. The header shows the pattern name and the as-of date. It does not show a reference ticker.
 
 Empty when that pattern has no successful run yet, or its latest successful run stored no hit above the floor. There is no "reference was not compared" state.
 
@@ -224,11 +233,11 @@ The form:
 | Pattern | Required. One of the first four in section 4 |
 | Enabled | On |
 
-The form saves kind `named`, schedule `daily`, and `spec.pattern`. It does not ask for a reference ticker, a minimum score, or a top K. Those numbers are still open (section 4). Saving does not start a run.
+The form saves kind `named`, schedule `daily`, and `spec.pattern`. It does not ask for a reference ticker, a minimum score, or a top K. The floor is 0.70 and the cap is 20 (section 4). Saving does not start a run.
 
-A hit opens that ticker's daily chart for the date window and draws the saved swing points. There is no second chart. The points come from the hit. They are not a user drawing.
+A hit opens that ticker's daily chart for the date window and draws the saved swing points and the neckline. There is no second chart. The points come from the hit. They are not a user drawing. Switching indicators leaves the marks in place.
 
-From a ticker, a check lists which of the four patterns match. Not built yet. Same rules and the same 10-session freshness as the market scan. The chart draws the swing points on that ticker. The check does not walk the catalog.
+From a ticker, a check lists which of the four patterns match. Same rules and the same 10-session freshness as the market scan. The chart draws the swing points and the neckline on that ticker. The check does not walk the catalog. An empty list is an empty state, not an error.
 
 There is no "scan now" button.
 
@@ -255,7 +264,7 @@ One engine. A method is a function: given the pattern spec and the prepared bars
 | Column | Meaning |
 | --- | --- |
 | `name` | Shown on the list, the header, and the Telegram message |
-| `kind` | `lookalike` is built. `named` is accepted and not built. `rule` and `shape` are reserved |
+| `kind` | `lookalike` is built. `named` is built. `rule` and `shape` are reserved |
 | `spec` | JSON. Look-alike holds `reference`, `min_score`, `top_k`. A named pattern holds `pattern` (section 4) |
 | `schedule` | `daily` now. `weekly` and `both` are reserved |
 | `enabled` | Disabled patterns are stored, shown, and not scored |
@@ -285,10 +294,10 @@ Hits for that pattern are written only after its scoring finishes. Status become
 | `run` | The `scan_run` |
 | `pattern` | The `pattern_def` |
 | `ticker` | The matched name. For look-alike, never the reference |
-| `score` | Look-alike: Pearson, from −1 to 1. Named pattern: fit of the swings. Even tops or bottoms score higher. A head that barely sticks out scores lower. The floor is still open. A later yes/no rule stores 1 for a hit |
+| `score` | Look-alike: Pearson, from −1 to 1. Named pattern: fit of the swings, from 0 to 1, floor 0.70. Even tops or bottoms score higher. A head that barely sticks out scores lower. A later yes/no rule stores 1 for a hit |
 | `window_start` | Look-alike: oldest session in the 90. Named pattern: date of the earliest swing in the match |
 | `window_end` | As-of date |
-| `swings` | Named pattern: the swing dates and prices, in the order the rule names them. Look-alike leaves this empty |
+| `swings` | Named pattern: the swing dates and prices, in the order the rule names them, plus the neckline endpoints. Look-alike leaves this empty |
 | `state` | Named pattern: `forming` or `confirmed`. Look-alike leaves this empty |
 
 Shared columns stay on the one hit table. Do not invent a second hit table.
@@ -323,7 +332,7 @@ Look-alike (built):
 - A failed run leaves the previous hits queryable.
 - Kind `lookalike` is dispatched through the method registry. The job does not call Pearson directly.
 
-Named patterns (not built yet):
+Named patterns:
 
 - Kind `named` is dispatched through the method registry. The method does not call Pearson. The pattern has no reference ticker.
 - The saved scan stores `spec.pattern`. The first build accepts the four names in section 4.
@@ -346,4 +355,4 @@ Named patterns (not built yet):
 - Rule forms, shape drawing, and a weekly run.
 - Changing price-alert delivery.
 - Triangles, flags, and cup and handle in the first named-pattern build.
-- Copying look-alike's 0.85 or top 20 onto a named pattern. Those parameters are still open.
+- Using look-alike's floor 0.85 as the named-pattern floor. Named patterns use 0.70 and a cap of 20.

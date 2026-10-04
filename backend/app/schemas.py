@@ -87,9 +87,11 @@ class AlertOut(BaseModel):
 
 class PatternIn(BaseModel):
     name: str
-    reference: str
+    kind: Literal["lookalike", "named"] = "lookalike"
+    reference: str = ""
     min_score: float = 0.85
     top_k: int = 20
+    pattern: str = ""
     enabled: bool = True
 
 
@@ -108,12 +110,32 @@ class HitOut(BaseModel):
     score: float
     window_start: date
     window_end: date
+    state: str | None = None
+    swings: dict[str, Any] | None = None
+    pattern: str | None = None
 
 
 class HitsOut(BaseModel):
     pattern_id: int
     name: str
-    reference: str
+    kind: str = "lookalike"
+    pattern: str | None = None
+    reference: str = ""
     as_of: date | None = None
     reference_compared: bool | None = None
     hits: list[HitOut] = Field(default_factory=list)
+
+
+class NamedMatchOut(BaseModel):
+    pattern: str
+    state: str
+    score: float
+    window_start: date
+    window_end: date
+    swings: dict[str, Any]
+
+
+class NamedCheckOut(BaseModel):
+    ticker: str
+    as_of: date | None = None
+    matches: list[NamedMatchOut] = Field(default_factory=list)

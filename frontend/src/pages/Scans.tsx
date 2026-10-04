@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type Pattern, type PatternHits, type SymbolRow } from "../api";
-import { Banner, Button, Checkbox, EmptyState, Input, Table } from "../design-system";
+import { api, type Pattern, type PatternHits, type PatternInput, type SymbolRow } from "../api";
+import { NAMED_PATTERNS, patternLabel, stateLabel } from "../chart/patternMarks";
+import { Banner, Button, Checkbox, EmptyState, Input, Select, Table } from "../design-system";
 
-const emptyForm = { name: "", reference: "", minScore: "0.85", topK: "20", enabled: true };
+const emptyForm = {
+  name: "",
+  kind: "lookalike" as "lookalike" | "named",
+  reference: "",
+  minScore: "0.85",
+  topK: "20",
+  pattern: "double_bottom",
+  enabled: true,
+};
 
 export function Scans() {
   const [patterns, setPatterns] = useState<Pattern[]>([]);
@@ -48,6 +57,10 @@ export function Scans() {
   }, [selected]);
 
   useEffect(() => {
+    if (form.kind !== "lookalike") {
+      setRefHits([]);
+      return;
+    }
     const q = refQ.trim();
     if (!q) {
       setRefHits([]);
@@ -71,14 +84,17 @@ export function Scans() {
       window.clearTimeout(timer);
       ctrl.abort();
     };
-  }, [refQ]);
+  }, [refQ, form.kind]);
 
   function fill(row: Pattern) {
+    const kind = row.kind === "named" ? "named" : "lookalike";
     setForm({
       name: row.name,
-      reference: row.spec.reference,
-      minScore: String(row.spec.min_score),
-      topK: String(row.spec.top_k),
+      kind,
+      reference: row.spec.reference ?? "",
+      minScore: String(row.spec.min_score ?? 0.85),
+      topK: String(row.spec.top_k ?? 20),
+      pattern: row.spec.pattern ?? "double_bottom",
       enabled: row.enabled,
     });
     setRefQ("");
@@ -89,6 +105,8 @@ export function Scans() {
     setSelected(row.id);
     fill(row);
   }
+
+  const namedHits = hits?.kind === "named";
 
   return (
     <div>
@@ -102,7 +120,9 @@ export function Scans() {
           <button key={row.id} type="button" className={row.id === selected ? "chip on" : "chip"} onClick={() => choose(row)}>
             {row.name}
             {row.enabled ? "" : " (off)"}
-            <span className="chip-meta"> · {row.spec.min_score}</span>
+            <span className="chip-meta">
+              {row.kind === "named" ? ` · ${patternLabel(row.spec.pattern)}` : ` · ${row.spec.min_score}`}
+            </span>
           </button>
         ))}
         <button
@@ -124,17 +144,19 @@ export function Scans() {
         onSubmit={async (e) => {
           e.preventDefault();
           setErr(null);
+          const body: PatternInput =
+            form.kind === "named"
+              ? { name: form.name.trim(), kind: "named", pattern: form.pattern, enabled: form.enabled }
+              : {
+                  name: form.name.trim(),
+                  kind: "lookalike",
+                  reference: form.reference.trim(),
+                  min_score: Number(form.minScore),
+                  top_k: Number(form.topK),
+                  enabled: form.enabled,
+                };
           try {
-            const saved = await api.savePattern(
-              {
-                name: form.name.trim(),
-                reference: form.reference.trim(),
-                min_score: Number(form.minScore),
-                top_k: Number(form.topK),
-                enabled: form.enabled,
-              },
-              selected ?? undefined,
-            );
+            const saved = await api.savePattern(body, selected ?? undefined);
             await loadPatterns(saved.id);
           } catch {
             setErr("Could not save pattern");
@@ -147,26 +169,48 @@ export function Scans() {
             <Input aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ background: "var(--bg)", minWidth: 200 }} />
           </label>
           <label className="field">
-            Reference ticker
-            <Input
-              aria-label="Reference"
-              value={refQ || form.reference}
-              onChange={(e) => {
-                setRefQ(e.target.value);
-                setForm({ ...form, reference: e.target.value.toUpperCase() });
-              }}
-              required
-              style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
-            />
+            Kind
+            <Select aria-label="Kind" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value === "named" ? "named" : "lookalike" })} style={{ background: "var(--bg)", minWidth: 160 }}>
+              <option value="lookalike">Look-alike</option>
+              <option value="named">Named pattern</option>
+            </Select>
           </label>
-          <label className="field">
-            Minimum score
-            <Input aria-label="Minimum score" value={form.minScore} onChange={(e) => setForm({ ...form, minScore: e.target.value })} style={{ background: "var(--bg)", width: 120, fontFamily: "var(--font-num)", textAlign: "right" }} />
-          </label>
-          <label className="field">
-            Top K
-            <Input aria-label="Top K" value={form.topK} onChange={(e) => setForm({ ...form, topK: e.target.value })} style={{ background: "var(--bg)", width: 100, fontFamily: "var(--font-num)", textAlign: "right" }} />
-          </label>
+          {form.kind === "named" ? (
+            <label className="field">
+              Pattern
+              <Select aria-label="Pattern" value={form.pattern} onChange={(e) => setForm({ ...form, pattern: e.target.value })} style={{ background: "var(--bg)", minWidth: 220 }}>
+                {NAMED_PATTERNS.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : (
+            <>
+              <label className="field">
+                Reference ticker
+                <Input
+                  aria-label="Reference"
+                  value={refQ || form.reference}
+                  onChange={(e) => {
+                    setRefQ(e.target.value);
+                    setForm({ ...form, reference: e.target.value.toUpperCase() });
+                  }}
+                  required
+                  style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
+                />
+              </label>
+              <label className="field">
+                Minimum score
+                <Input aria-label="Minimum score" value={form.minScore} onChange={(e) => setForm({ ...form, minScore: e.target.value })} style={{ background: "var(--bg)", width: 120, fontFamily: "var(--font-num)", textAlign: "right" }} />
+              </label>
+              <label className="field">
+                Top K
+                <Input aria-label="Top K" value={form.topK} onChange={(e) => setForm({ ...form, topK: e.target.value })} style={{ background: "var(--bg)", width: 100, fontFamily: "var(--font-num)", textAlign: "right" }} />
+              </label>
+            </>
+          )}
           <label className="check-label">
             <Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
             Enabled
@@ -175,7 +219,7 @@ export function Scans() {
             <Button type="submit">Save</Button>
           </div>
         </div>
-        {refHits.length > 0 ? (
+        {form.kind === "lookalike" && refHits.length > 0 ? (
           <div className="suggest" style={{ marginTop: 8 }}>
             {refHits.map((row) => (
               <button
@@ -196,23 +240,36 @@ export function Scans() {
       {hits ? (
         <div className="table-panel">
           <div className="hits-head">
-            <div className="hits-ref">
-              Reference
-              <span className="ticker-cell" style={{ textTransform: "none", letterSpacing: 0, fontSize: 14 }}>
-                {hits.reference || "—"}
-              </span>
-            </div>
+            {namedHits ? (
+              <div className="hits-ref">
+                Pattern
+                <span className="ticker-cell" style={{ textTransform: "none", letterSpacing: 0, fontSize: 14 }}>
+                  {patternLabel(hits.pattern) || "—"}
+                </span>
+              </div>
+            ) : (
+              <div className="hits-ref">
+                Reference
+                <span className="ticker-cell" style={{ textTransform: "none", letterSpacing: 0, fontSize: 14 }}>
+                  {hits.reference || "—"}
+                </span>
+              </div>
+            )}
             {hits.as_of ? <span className="board-pill">as of {hits.as_of}</span> : null}
           </div>
           {hits.as_of == null ? <EmptyState text="No successful run yet" /> : null}
-          {hits.as_of != null && hits.reference_compared === false ? <EmptyState text="Reference was not compared" /> : null}
-          {hits.as_of != null && hits.reference_compared !== false && hits.hits.length === 0 ? <EmptyState text="No names at or above the floor" /> : null}
+          {!namedHits && hits.as_of != null && hits.reference_compared === false ? <EmptyState text="Reference was not compared" /> : null}
+          {hits.as_of != null && (namedHits || hits.reference_compared !== false) && hits.hits.length === 0 ? (
+            <EmptyState text="No names at or above the floor" />
+          ) : null}
           {hits.hits.length > 0 ? (
             <Table className="heads-up">
               <thead>
                 <tr>
                   <th>Ticker</th>
                   <th>Name</th>
+                  {namedHits ? <th>Pattern</th> : null}
+                  {namedHits ? <th>State</th> : null}
                   <th className="num">Score</th>
                   <th>As of</th>
                   <th />
@@ -222,9 +279,15 @@ export function Scans() {
                 {hits.hits.map((hit) => (
                   <tr key={hit.ticker}>
                     <td className="ticker-cell">
-                      <Link to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`}>{hit.ticker}</Link>
+                      {namedHits ? (
+                        <Link to={`/symbol/${hit.ticker}?pattern=${hits.pattern_id}`}>{hit.ticker}</Link>
+                      ) : (
+                        <Link to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`}>{hit.ticker}</Link>
+                      )}
                     </td>
                     <td>{hit.name}</td>
+                    {namedHits ? <td>{patternLabel(hit.pattern ?? hits.pattern)}</td> : null}
+                    {namedHits ? <td>{stateLabel(hit.state)}</td> : null}
                     <td className="score-cell">
                       <span className="score-num">{hit.score.toFixed(4)}</span>
                       <span className="score-bar" aria-hidden="true">
@@ -233,9 +296,15 @@ export function Scans() {
                     </td>
                     <td className="ticker-cell">{hit.window_end}</td>
                     <td className="center">
-                      <Link className="text-btn" to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`}>
-                        Compare
-                      </Link>
+                      {namedHits ? (
+                        <Link className="text-btn" to={`/symbol/${hit.ticker}?pattern=${hits.pattern_id}`}>
+                          Chart
+                        </Link>
+                      ) : (
+                        <Link className="text-btn" to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`}>
+                          Compare
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -78,8 +78,8 @@ describe("indicator drawing", () => {
     expect(view.option.grid).toHaveLength(2);
     expect(line).toMatchObject({ type: "line", yAxisIndex: 0, xAxisIndex: 0, data: [null, 11.5] });
     expect(candle?.yAxisIndex ?? 0).toBe(0);
-    expect(candle?.markLine?.data?.some((item) => item.label?.formatter === "ref")).toBe(true);
-    expect(candle?.markLine?.data?.some((item) => item.yAxis === 11)).toBe(true);
+    expect(candle?.markLine?.data?.some((item) => !Array.isArray(item) && item.label?.formatter === "ref")).toBe(true);
+    expect(candle?.markLine?.data?.some((item) => !Array.isArray(item) && item.yAxis === 11)).toBe(true);
     expect(volume).toMatchObject({ yAxisIndex: 1, xAxisIndex: 1 });
     expect(view.option.dataZoom[0].xAxisIndex).toEqual([0, 1]);
     expect(view.readouts.map((item) => item.label)).toEqual(["SMA (20)"]);
@@ -144,7 +144,7 @@ describe("indicator drawing", () => {
     expect(volume).toMatchObject({ yAxisIndex: 2, xAxisIndex: 2 });
     expect(view.option.yAxis[1]).toMatchObject({ min: 0, max: 100, scale: false, gridIndex: 1 });
     expect(view.option.yAxis[0]?.min).toBeUndefined();
-    expect(candle?.markLine?.data?.some((item) => item.yAxis === 30)).toBe(false);
+    expect(candle?.markLine?.data?.some((item) => !Array.isArray(item) && item.yAxis === 30)).toBe(false);
     expect(view.option.dataZoom[0].xAxisIndex).toEqual([0, 1, 2]);
     expect(view.readouts.map((item) => item.label)).toEqual(["RSI (14)"]);
   });

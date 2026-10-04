@@ -71,7 +71,7 @@ export type Pattern = {
   kind: string;
   schedule: string;
   enabled: boolean;
-  spec: { reference: string; min_score: number; top_k: number };
+  spec: { reference?: string; min_score?: number; top_k?: number; pattern?: string };
 };
 
 export type ScanHit = {
@@ -80,11 +80,16 @@ export type ScanHit = {
   score: number;
   window_start: string;
   window_end: string;
+  state?: string | null;
+  swings?: { pattern?: string; points?: { role?: string; date: string; price: number }[]; neckline?: { date: string; price: number }[] } | null;
+  pattern?: string | null;
 };
 
 export type PatternHits = {
   pattern_id: number;
   name: string;
+  kind?: string;
+  pattern?: string | null;
   reference: string;
   as_of: string | null;
   reference_compared: boolean | null;
@@ -93,10 +98,31 @@ export type PatternHits = {
 
 export type PatternInput = {
   name: string;
-  reference: string;
-  min_score: number;
-  top_k: number;
+  kind?: "lookalike" | "named";
+  reference?: string;
+  min_score?: number;
+  top_k?: number;
+  pattern?: string;
   enabled: boolean;
+};
+
+export type NamedMatch = {
+  pattern: string;
+  state: string;
+  score: number;
+  window_start: string;
+  window_end: string;
+  swings: {
+    pattern?: string;
+    points?: { role?: string; date: string; price: number }[];
+    neckline?: { date: string; price: number }[];
+  };
+};
+
+export type NamedCheck = {
+  ticker: string;
+  as_of: string | null;
+  matches: NamedMatch[];
 };
 
 export const api = {
@@ -125,6 +151,8 @@ export const api = {
   company: (ticker: string) => req<Record<string, unknown>>(`/api/symbols/${ticker}/company`),
   patterns: () => req<Pattern[]>("/api/patterns"),
   patternHits: (id: number, init?: RequestInit) => req<PatternHits>(`/api/patterns/${id}/hits`, init),
+  namedPatterns: (ticker: string, init?: RequestInit) =>
+    req<NamedCheck>(`/api/symbols/${encodeURIComponent(ticker)}/named-patterns`, init),
   savePattern: (body: PatternInput, id?: number) =>
     req<Pattern>(id ? `/api/patterns/${id}` : "/api/patterns", {
       method: id ? "PUT" : "POST",

@@ -316,6 +316,24 @@ h1, h2, h3 { margin: 0; }
   overflow: auto;
 }
 .chart-stack { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.pattern-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  min-height: 28px;
+}
+.pattern-readout .pattern-kicker {
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pattern-readout .pattern-empty {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
 .tool-row {
   display: flex;
   align-items: center;

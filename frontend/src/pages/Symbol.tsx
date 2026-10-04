@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { api, type Bar, type SymbolRow } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { api, type Bar, type NamedMatch, type SymbolRow } from "../api";
 import { displayBoard } from "./Market";
 import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Spinner, Tabs, Toast } from "../design-system";
 import { CompanyPanel } from "./CompanyPanel";
 import { DailyChart } from "../chart/DailyChart";
 import type { Drawing, DrawingTool } from "../chart/drawings";
 import { DEFAULT_INDICATOR_IDS, indicatorQuery } from "../chart/indicators";
+import { markFrom, patternLabel, stateLabel, type PatternMark } from "../chart/patternMarks";
+
+type SavedHit = { pattern: string; state: string; score: number; mark: PatternMark };
 
 /** Shared by the candle request and the indicator request. Both omit from/to so the API applies one default window. */
 const CANDLE_RANGE = undefined;
@@ -34,6 +37,12 @@ export function SymbolPage() {
   const [price, setPrice] = useState("");
   const [mode, setMode] = useState("once");
   const [err, setErr] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const patternId = searchParams.get("pattern");
+  const [matches, setMatches] = useState<NamedMatch[]>([]);
+  const [patternsReady, setPatternsReady] = useState(false);
+  const [savedHit, setSavedHit] = useState<SavedHit | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +113,62 @@ export function SymbolPage() {
     };
   }, [tab, t]);
 
+  useEffect(() => {
+    setPicked(null);
+    setMatches([]);
+    setPatternsReady(false);
+    const ctrl = new AbortController();
+    api
+      .namedPatterns(t, { signal: ctrl.signal })
+      .then((body) => {
+        setMatches(Array.isArray(body.matches) ? body.matches : []);
+        setPatternsReady(true);
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error)) return;
+        setMatches([]);
+        setPatternsReady(true);
+      });
+    return () => ctrl.abort();
+  }, [t]);
+
+  useEffect(() => {
+    const id = Number(patternId);
+    if (!patternId || !Number.isFinite(id)) {
+      setSavedHit(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    api
+      .patternHits(id, { signal: ctrl.signal })
+      .then((body) => {
+        const hit = body.hits.find((row) => row.ticker === t);
+        const mark = hit ? markFrom(hit.swings) : null;
+        const pattern = hit?.pattern ?? body.pattern ?? null;
+        if (!hit || !mark || !pattern) {
+          setSavedHit(null);
+          return;
+        }
+        setSavedHit({ pattern, state: hit.state || "", score: hit.score, mark });
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error)) return;
+        setSavedHit(null);
+      });
+    return () => ctrl.abort();
+  }, [t, patternId]);
+
+  const highlight = picked ?? (savedHit ? savedHit.pattern : null) ?? matches[0]?.pattern ?? null;
+  const savedOnly = Boolean(savedHit && !picked && !matches.some((row) => row.pattern === savedHit.pattern));
+  const chartMark = useMemo(() => {
+    if (picked) {
+      const live = matches.find((row) => row.pattern === picked);
+      return live ? markFrom(live.swings) : null;
+    }
+    if (savedHit) return savedHit.mark;
+    return matches[0] ? markFrom(matches[0].swings) : null;
+  }, [picked, savedHit, matches]);
+
   const persistDrawings = (d: Drawing[]) => {
     setDrawings(d);
     window.setTimeout(() => {
@@ -132,6 +197,28 @@ export function SymbolPage() {
       {err ? <Banner kind="error">{err}</Banner> : null}
       <div className="symbol-split">
         <div className="chart-frame">
+          {patternsReady ? (
+            <div className="pattern-readout" aria-label="Named patterns">
+              <span className="pattern-kicker">Patterns</span>
+              {matches.length === 0 && !savedOnly ? <span className="pattern-empty">No named pattern on this ticker</span> : null}
+              {savedOnly && savedHit ? (
+                <button type="button" className="chip on" aria-pressed="true">
+                  {patternLabel(savedHit.pattern)} · {stateLabel(savedHit.state)} · {savedHit.score.toFixed(2)}
+                </button>
+              ) : null}
+              {matches.map((row) => (
+                <button
+                  key={row.pattern}
+                  type="button"
+                  className={highlight === row.pattern ? "chip on" : "chip"}
+                  aria-pressed={highlight === row.pattern}
+                  onClick={() => setPicked(row.pattern)}
+                >
+                  {patternLabel(row.pattern)} · {stateLabel(row.state)} · {row.score.toFixed(2)}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {bars.length === 0 ? (
             <EmptyState text={`No daily bars for ${t}`} />
           ) : (
@@ -142,6 +229,7 @@ export function SymbolPage() {
               indicatorData={barsTicker === t && indicatorTicker === t ? indicatorBody : null}
               onIndicator={setIndicatorIds}
               drawings={drawings}
+              patternMark={chartMark}
               tool={tool}
               onTool={setTool}
               onDrawings={persistDrawings}

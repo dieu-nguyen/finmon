@@ -177,6 +177,8 @@ class ScanHit(Base):
     score: Mapped[float] = mapped_column(Float)
     window_start: Mapped[date] = mapped_column(Date)
     window_end: Mapped[date] = mapped_column(Date)
+    swings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    state: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class BarSync(Base):
