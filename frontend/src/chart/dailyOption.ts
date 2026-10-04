@@ -1,6 +1,5 @@
 import type { Bar } from "../api";
-import type { Drawing } from "./drawings";
-import { categoryIndex } from "./drawings";
+import { FIB_LEVELS, type Drawing, type DrawingTool, type Point } from "./drawings";
 import { findIndicator, indicatorPlot, type IndicatorPlot, type IndicatorReadout, type PlotColors } from "./indicators";
 
 export type ChartColors = PlotColors & {
@@ -9,7 +8,18 @@ export type ChartColors = PlotColors & {
   text: string;
 };
 
-type Mark = { yAxis: number; lineStyle: { color: string }; label?: { formatter: string } };
+type MarkEndpoint = {
+  yAxis?: number;
+  xAxis?: string;
+  coord?: [string, number];
+  symbol?: string;
+  lineStyle?: { color?: string; width?: number };
+  label?: { formatter?: string; color?: string; show?: boolean; position?: string };
+};
+
+type Mark = MarkEndpoint | [MarkEndpoint, MarkEndpoint];
+
+type AreaCorner = { xAxis: string; yAxis: number };
 
 export type DailySeries = {
   type: string;
@@ -17,8 +27,9 @@ export type DailySeries = {
   yAxisIndex?: number;
   xAxisIndex?: number;
   data?: unknown;
-  markLine?: { symbol?: string; data?: Mark[]; label?: { color?: string } };
-  markPoint?: { data: unknown[] };
+  markLine?: { symbol?: string; silent?: boolean; data?: Mark[]; label?: { color?: string } };
+  markPoint?: { itemStyle?: { color?: string }; label?: { color?: string; fontSize?: number }; data: unknown[] };
+  markArea?: { silent?: boolean; itemStyle?: { color?: string; opacity?: number; borderColor?: string; borderWidth?: number }; data: [AreaCorner, AreaCorner][] };
   itemStyle?: unknown;
   showSymbol?: boolean;
   lineStyle?: unknown;
@@ -44,9 +55,17 @@ export type DailyOption = {
   grid: { left: number; right: number; top: number | string; height: string }[];
   xAxis: unknown[];
   yAxis: DailyAxis[];
-  dataZoom: { type: string; xAxisIndex: number[]; bottom?: number; height?: number; borderColor?: string; fillerColor?: string; textStyle?: unknown }[];
+  dataZoom: {
+    type: string;
+    xAxisIndex: number[];
+    bottom?: number;
+    height?: number;
+    borderColor?: string;
+    fillerColor?: string;
+    textStyle?: unknown;
+    moveOnMouseMove?: boolean;
+  }[];
   series: DailySeries[];
-  graphic?: unknown[];
 };
 
 function place(series: Record<string, unknown>[], x: number, y: number): DailySeries[] {
@@ -99,6 +118,18 @@ function categoryAxis(dates: string[], gridIndex: number, colors: ChartColors, s
   };
 }
 
+function priceSegment(from: Point, to: Point, color: string, label?: string): [MarkEndpoint, MarkEndpoint] {
+  return [
+    {
+      coord: [from.date, from.price],
+      symbol: "none",
+      lineStyle: { color, width: 1.5 },
+      ...(label ? { label: { formatter: label, position: "middle", color } } : {}),
+    },
+    { coord: [to.date, to.price], symbol: "none" },
+  ];
+}
+
 export function buildDailyOption(input: {
   bars: Bar[];
   drawings: Drawing[];
@@ -108,6 +139,7 @@ export function buildDailyOption(input: {
   ceiling?: number | null;
   floor?: number | null;
   colors: ChartColors;
+  tool?: DrawingTool;
 }): { option: DailyOption; readouts: IndicatorReadout[] } {
   const { bars, drawings, colors } = input;
   const dates = bars.map((bar) => bar.date);
@@ -126,27 +158,44 @@ export function buildDailyOption(input: {
   if (input.refPrice) markLineData.push({ yAxis: input.refPrice, lineStyle: { color: colors.faint }, label: { formatter: "ref" } });
   if (input.ceiling) markLineData.push({ yAxis: input.ceiling, lineStyle: { color: colors.up }, label: { formatter: "ceil" } });
   if (input.floor) markLineData.push({ yAxis: input.floor, lineStyle: { color: colors.down }, label: { formatter: "floor" } });
+  const markPoint: { coord: [string, number]; value: string; symbol: string; symbolSize: number; label?: { show: boolean } }[] = [];
+  const areas: [AreaCorner, AreaCorner][] = [];
   for (const drawing of drawings) {
-    if (drawing.tool === "horizontal" && drawing.points[0]) {
-      markLineData.push({ yAxis: drawing.points[0].price, lineStyle: { color: colors.accent } });
+    const points = drawing.points ?? [];
+    const [start, end] = points;
+    if (!start) continue;
+    if (drawing.tool === "horizontal") {
+      markLineData.push({ yAxis: start.price, lineStyle: { color: colors.accent, width: 1.5 }, label: { show: false } });
+      continue;
     }
-  }
-  const markPoint = drawings
-    .filter((drawing) => drawing.tool === "pin" || drawing.tool === "text")
-    .map((drawing) => ({
-      coord: [drawing.points[0]?.date, drawing.points[0]?.price],
-      value: drawing.tool === "text" ? "note" : "pin",
-    }));
-  const graphics: unknown[] = [];
-  for (const drawing of drawings) {
-    if (drawing.tool === "trend" && drawing.points.length >= 2) {
-      graphics.push({
-        type: "line",
-        xAxis: categoryIndex(dates, drawing.points[0].date),
-        yAxis: drawing.points[0].price,
-        xAxis2: categoryIndex(dates, drawing.points[1].date),
-        yAxis2: drawing.points[1].price,
+    if (drawing.tool === "pin" || drawing.tool === "text") {
+      markPoint.push({
+        coord: [start.date, start.price],
+        value: drawing.tool === "text" ? "note" : "pin",
+        symbol: "pin",
+        symbolSize: 36,
       });
+      continue;
+    }
+    if (drawing.tool !== "trend" && drawing.tool !== "rectangle" && drawing.tool !== "fib") continue;
+    if (!end) {
+      markPoint.push({ coord: [start.date, start.price], value: "", symbol: "circle", symbolSize: 8, label: { show: false } });
+      continue;
+    }
+    if (drawing.tool === "trend") {
+      markLineData.push(priceSegment(start, end, colors.accent));
+      continue;
+    }
+    if (drawing.tool === "rectangle") {
+      areas.push([
+        { xAxis: start.date, yAxis: start.price },
+        { xAxis: end.date, yAxis: end.price },
+      ]);
+      continue;
+    }
+    for (const level of FIB_LEVELS) {
+      const price = start.price + (end.price - start.price) * level;
+      markLineData.push(priceSegment({ date: start.date, price }, { date: end.date, price }, colors.accent, String(level)));
     }
   }
 
@@ -200,7 +249,7 @@ export function buildDailyOption(input: {
     xAxis,
     yAxis,
     dataZoom: [
-      { type: "inside", xAxisIndex: xIndexes },
+      { type: "inside", xAxisIndex: xIndexes, moveOnMouseMove: (input.tool ?? "pan") === "pan" },
       {
         type: "slider",
         xAxisIndex: xIndexes,
@@ -216,8 +265,17 @@ export function buildDailyOption(input: {
         type: "candlestick",
         data: bars.map((bar) => [bar.open, bar.close, bar.low, bar.high]),
         itemStyle: { color: colors.up, color0: colors.down, borderColor: colors.up, borderColor0: colors.down },
-        markLine: { symbol: "none", data: markLineData, label: { color: colors.faint } },
-        markPoint: { data: markPoint },
+        markLine: { symbol: "none", silent: true, data: markLineData, label: { color: colors.faint } },
+        markPoint: { itemStyle: { color: colors.accent }, label: { color: colors.text, fontSize: 11 }, data: markPoint },
+        ...(areas.length
+          ? {
+              markArea: {
+                silent: true,
+                itemStyle: { color: colors.accent, opacity: 0.12, borderColor: colors.accent, borderWidth: 1 },
+                data: areas,
+              },
+            }
+          : {}),
       },
       ...priceLines,
       {
@@ -232,7 +290,6 @@ export function buildDailyOption(input: {
       ...volumeLines,
       ...separateLines,
     ],
-    graphic: graphics,
   };
 
   return { option, readouts };

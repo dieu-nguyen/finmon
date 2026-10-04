@@ -1,15 +1,46 @@
+import type { ECharts } from "echarts";
 import ReactECharts from "echarts-for-react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { Bar } from "../api";
 import { IconButton, formatDong } from "../design-system";
 import { ToolGlyph } from "../design-system/icons";
 import { buildDailyOption, type ChartColors } from "./dailyOption";
-import type { Drawing, DrawingTool } from "./drawings";
+import { drawingsAfterClick, type Drawing, type DrawingTool } from "./drawings";
 import { DEFAULT_INDICATOR_IDS } from "./indicators";
 import { IndicatorPicker } from "./IndicatorPicker";
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#e6edf3";
+}
+
+type DrawState = {
+  tool: DrawingTool;
+  drawings: Drawing[];
+  bars: Bar[];
+  onDrawings: (d: Drawing[]) => void;
+};
+
+const boundCharts = new WeakSet<object>();
+
+function bindDrawingClicks(chart: ECharts, stateRef: { current: DrawState }) {
+  if (boundCharts.has(chart)) return;
+  boundCharts.add(chart);
+  chart.getZr().on("click", (event) => {
+    const { offsetX, offsetY } = event as { offsetX?: number; offsetY?: number };
+    if (offsetX == null || offsetY == null) return;
+    const { tool, drawings, bars, onDrawings } = stateRef.current;
+    if (tool === "pan") return;
+    const pixel: [number, number] = [offsetX, offsetY];
+    if (!chart.containPixel({ gridIndex: 0 }, pixel)) return;
+    let raw: unknown = null;
+    try {
+      raw = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, pixel);
+    } catch {
+      raw = null;
+    }
+    const next = drawingsAfterClick(drawings, tool, bars, raw);
+    if (next !== null) onDrawings(next);
+  });
 }
 
 export function DailyChart({
@@ -50,8 +81,11 @@ export function DailyChart({
       accent: cssVar("--accent"),
       warn: cssVar("--warn"),
     };
-    return buildDailyOption({ bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, colors });
-  }, [bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor]);
+    return buildDailyOption({ bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, colors, tool });
+  }, [bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, tool]);
+
+  const stateRef = useRef<DrawState>({ tool, drawings, bars, onDrawings });
+  stateRef.current = { tool, drawings, bars, onDrawings };
 
   const tools: { id: DrawingTool; label: string }[] = [
     { id: "pan", label: "pan" },
@@ -102,31 +136,8 @@ export function DailyChart({
       <ReactECharts
         option={view.option}
         notMerge
-        style={{ height: 520 }}
-        onEvents={{
-          click: (params: { dataIndex?: number; value?: unknown }) => {
-            if (tool === "pan" || params.dataIndex == null) return;
-            const bar = bars[params.dataIndex];
-            if (!bar) return;
-            const price = typeof params.value === "number" ? params.value : bar.close;
-            if (tool === "delete") {
-              onDrawings(drawings.slice(0, -1));
-              return;
-            }
-            if (tool === "horizontal" || tool === "pin" || tool === "text") {
-              onDrawings([...drawings, { tool, points: [{ date: bar.date, price: Number(price) }] }]);
-              return;
-            }
-            const previous = drawings[drawings.length - 1];
-            if (previous && previous.tool === tool && previous.points.length === 1) {
-              const next = drawings.slice(0, -1);
-              const pts = [...previous.points, { date: bar.date, price: Number(price) }];
-              onDrawings([...next, { tool, points: pts }]);
-              return;
-            }
-            onDrawings([...drawings, { tool, points: [{ date: bar.date, price: Number(price) }] }]);
-          },
-        }}
+        style={{ height: 520, cursor: tool === "pan" ? "default" : "crosshair" }}
+        onChartReady={(chart) => bindDrawingClicks(chart as ECharts, stateRef)}
       />
     </div>
   );
