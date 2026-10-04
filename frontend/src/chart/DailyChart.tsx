@@ -1,11 +1,11 @@
 import type { ECharts } from "echarts";
 import ReactECharts from "echarts-for-react";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Bar } from "../api";
 import { IconButton, formatDong } from "../design-system";
 import { ToolGlyph } from "../design-system/icons";
 import { buildDailyOption, type ChartColors } from "./dailyOption";
-import { drawingsAfterClick, type Drawing, type DrawingTool } from "./drawings";
+import { barIndexFromPixel, drawingsAfterClick, type Drawing, type DrawingTool } from "./drawings";
 import { DEFAULT_INDICATOR_IDS } from "./indicators";
 import { IndicatorPicker } from "./IndicatorPicker";
 
@@ -18,6 +18,7 @@ type DrawState = {
   drawings: Drawing[];
   bars: Bar[];
   onDrawings: (d: Drawing[]) => void;
+  onHover: (index: number | null) => void;
 };
 
 const boundCharts = new WeakSet<object>();
@@ -41,6 +42,24 @@ function bindDrawingClicks(chart: ECharts, stateRef: { current: DrawState }) {
     const next = drawingsAfterClick(drawings, tool, bars, raw);
     if (next !== null) onDrawings(next);
   });
+  const onMove = (event: { offsetX?: number; offsetY?: number }) => {
+    const { offsetX, offsetY } = event;
+    if (offsetX == null || offsetY == null) return;
+    const pixel: [number, number] = [offsetX, offsetY];
+    if (!chart.containPixel("grid", pixel)) {
+      stateRef.current.onHover(null);
+      return;
+    }
+    let raw: unknown = null;
+    try {
+      raw = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, pixel);
+    } catch {
+      raw = null;
+    }
+    stateRef.current.onHover(barIndexFromPixel(stateRef.current.bars.length, raw));
+  };
+  chart.getZr().on("mousemove", onMove);
+  chart.getZr().on("globalout", () => stateRef.current.onHover(null));
 }
 
 export function DailyChart({
@@ -84,8 +103,12 @@ export function DailyChart({
     return buildDailyOption({ bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, colors, tool });
   }, [bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, tool]);
 
-  const stateRef = useRef<DrawState>({ tool, drawings, bars, onDrawings });
-  stateRef.current = { tool, drawings, bars, onDrawings };
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const stateRef = useRef<DrawState>({ tool, drawings, bars, onDrawings, onHover: setHoverIndex });
+  stateRef.current = { tool, drawings, bars, onDrawings, onHover: setHoverIndex };
+  useEffect(() => {
+    setHoverIndex(null);
+  }, [bars]);
 
   const tools: { id: DrawingTool; label: string }[] = [
     { id: "pan", label: "pan" },
@@ -97,8 +120,9 @@ export function DailyChart({
     { id: "pin", label: "pin" },
     { id: "delete", label: "delete selected" },
   ];
-  const last = bars.at(-1);
-  const volClass = last && last.close >= last.open ? "up" : "down";
+  const bar = hoverIndex != null && bars[hoverIndex] ? bars[hoverIndex] : bars.at(-1);
+  const volClass = bar && bar.close >= bar.open ? "up" : "down";
+  const readouts = view.readoutAt(hoverIndex);
 
   return (
     <div className="chart-stack" data-ticker={ticker}>
@@ -111,22 +135,23 @@ export function DailyChart({
         <span className="tool-sep" />
         <IndicatorPicker value={indicatorIds} onChange={onIndicator} />
       </div>
-      {last ? (
+      {bar ? (
         <div className="ohlc">
+          <span>{bar.date}</span>
           <span>
-            O <b>{formatDong(last.open)}</b>
+            O <b>{formatDong(bar.open)}</b>
           </span>
           <span>
-            H <b>{formatDong(last.high)}</b>
+            H <b>{formatDong(bar.high)}</b>
           </span>
           <span>
-            L <b>{formatDong(last.low)}</b>
+            L <b>{formatDong(bar.low)}</b>
           </span>
           <span>
-            C <b>{formatDong(last.close)}</b>
+            C <b>{formatDong(bar.close)}</b>
           </span>
-          <span className={volClass}>Vol {formatDong(last.volume)}</span>
-          {view.readouts.map((item) => (
+          <span className={volClass}>Vol {formatDong(bar.volume)}</span>
+          {readouts.map((item) => (
             <span key={item.label}>
               {item.label} <b>{item.value}</b>
             </span>

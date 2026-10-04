@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Bar } from "../api";
 import { buildDailyOption } from "./dailyOption";
-import { drawingsAfterClick, FIB_LEVELS, type Drawing } from "./drawings";
+import { barIndexFromPixel, drawingsAfterClick, FIB_LEVELS, type Drawing } from "./drawings";
 
 const colors = {
   up: "#3dd68c",
@@ -137,6 +137,28 @@ describe("chart drawings", () => {
     expect(encoded).not.toContain('"xAxis":0');
   });
 
+  it("pins the hover tooltip instead of following the pointer", () => {
+    const tooltip = view([]).option.tooltip;
+    expect(tooltip.trigger).toBe("axis");
+    expect(tooltip.show).toBe(false);
+    expect(tooltip.position).toEqual([0, 0]);
+  });
+
+  it("reads indicator values for the hovered bar", () => {
+    const built = buildDailyOption({
+      bars,
+      drawings: [],
+      indicatorIds: ["sma"],
+      indicatorData: { "sma:20": [10, 11, 14] },
+      refPrice: null,
+      ceiling: null,
+      floor: null,
+      colors,
+    });
+    expect(built.readoutAt(0)).toEqual([{ label: "SMA (20)", value: "10" }]);
+    expect(built.readoutAt(null)).toEqual([{ label: "SMA (20)", value: "14" }]);
+  });
+
   it("stops the chart from dragging while a drawing tool is selected", () => {
     const option = buildDailyOption({
       bars,
@@ -175,6 +197,13 @@ describe("drawing clicks", () => {
       },
     ]);
     expect(drawingsAfterClick(done ?? [], "delete", clickBars, [0, 1])).toEqual([]);
+  });
+
+  it("maps a pointer to a bar index without using the price", () => {
+    expect(barIndexFromPixel(3, [1.2, 999])).toBe(1);
+    expect(barIndexFromPixel(3, 0.4)).toBe(0);
+    expect(barIndexFromPixel(3, [-2, 10])).toBeNull();
+    expect(barIndexFromPixel(3, [9, 10])).toBeNull();
   });
 
   it("ignores pan and clicks that miss the bars", () => {

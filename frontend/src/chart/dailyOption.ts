@@ -50,7 +50,13 @@ export type DailyAxis = {
 export type DailyOption = {
   backgroundColor: string;
   animation: boolean;
-  tooltip: unknown;
+  tooltip: {
+    show: boolean;
+    trigger: string;
+    position: [number, number];
+    backgroundColor: string;
+    textStyle: { color: string; fontFamily: string };
+  };
   axisPointer: unknown;
   grid: { left: number; right: number; top: number | string; height: string }[];
   xAxis: unknown[];
@@ -140,7 +146,7 @@ export function buildDailyOption(input: {
   floor?: number | null;
   colors: ChartColors;
   tool?: DrawingTool;
-}): { option: DailyOption; readouts: IndicatorReadout[] } {
+}): { option: DailyOption; readouts: IndicatorReadout[]; readoutAt: (index: number | null) => IndicatorReadout[] } {
   const { bars, drawings, colors } = input;
   const dates = bars.map((bar) => bar.date);
   const plots: IndicatorPlot[] = [];
@@ -234,13 +240,19 @@ export function buildDailyOption(input: {
   const priceLines = plots.filter((plot) => plot.pane === "price").flatMap((plot) => place(plot.series, 0, 0));
   const volumeLines = plots.filter((plot) => plot.pane === "volume").flatMap((plot) => place(plot.series, volumeIndex, volumeIndex));
   const separateLines = separates.flatMap((plot, index) => place(plot.series, index + 1, index + 1));
-  const readouts = plots.flatMap((plot) => (plot.readout ? [plot.readout] : []));
+  const readoutAt = (index: number | null) => plots.flatMap((plot) => {
+    const item = plot.readoutAt(index);
+    return item ? [item] : [];
+  });
+  const readouts = readoutAt(null);
 
   const option: DailyOption = {
     backgroundColor: "transparent",
     animation: false,
     tooltip: {
+      show: false,
       trigger: "axis",
+      position: [0, 0],
       backgroundColor: colors.elev,
       textStyle: { color: colors.text, fontFamily: "IBM Plex Mono, monospace" },
     },
@@ -292,5 +304,5 @@ export function buildDailyOption(input: {
     ],
   };
 
-  return { option, readouts };
+  return { option, readouts, readoutAt };
 }

@@ -31,6 +31,15 @@ export function pointFromPixel(bars: { date: string }[], raw: unknown): Point | 
   return { date: bars[index].date, price: Math.round(y) };
 }
 
+/** Category index from convertFromPixel, or null when the pointer misses the bars. */
+export function barIndexFromPixel(barCount: number, raw: unknown): number | null {
+  const x = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof x !== "number" || !Number.isFinite(x)) return null;
+  const index = Math.round(x);
+  if (index < 0 || index >= barCount) return null;
+  return index;
+}
+
 /** null means the click did not change the drawing list. */
 export function drawingsAfterClick(
   drawings: Drawing[],
