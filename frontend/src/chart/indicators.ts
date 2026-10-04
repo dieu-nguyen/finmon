@@ -92,6 +92,20 @@ function lastOf(values: Nums): number | null {
   return null;
 }
 
+function valueAt(values: Nums, index: number | null): number | null {
+  if (index == null) return lastOf(values);
+  if (index < 0 || index >= values.length) return null;
+  return values[index] ?? null;
+}
+
+function numberReadout(label: string, values: Nums, format: (value: number) => string) {
+  return (index: number | null): IndicatorReadout | null => {
+    const value = valueAt(values, index);
+    if (value == null) return null;
+    return { label, value: format(value) };
+  };
+}
+
 function formatOsc(value: number): string {
   return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(value);
 }
@@ -119,6 +133,7 @@ export type IndicatorPlot = {
   series: Record<string, unknown>[];
   axis: PlotAxis | null;
   readout: IndicatorReadout | null;
+  readoutAt: (index: number | null) => IndicatorReadout | null;
 };
 
 function assertNever(value: never): never {
@@ -126,19 +141,20 @@ function assertNever(value: never): never {
 }
 
 export function indicatorPlot(spec: IndicatorSpec, payload: unknown, colors: PlotColors): IndicatorPlot {
-  const empty: IndicatorPlot = { pane: "price", series: [], axis: null, readout: null };
+  const empty: IndicatorPlot = { pane: "price", series: [], axis: null, readout: null, readoutAt: () => null };
   if (payload == null) return empty;
   const color = stroke(spec, colors);
 
   if (spec.draw === "price-line") {
     const data = asNums(payload);
     if (!data) return empty;
-    const last = lastOf(data);
+    const readoutAt = numberReadout(spec.label, data, formatDong);
     return {
       pane: "price",
       series: [lineSeries(spec.label, data, color)],
       axis: null,
-      readout: last == null ? null : { label: spec.label, value: formatDong(last) },
+      readout: readoutAt(null),
+      readoutAt,
     };
   }
 
@@ -149,7 +165,7 @@ export function indicatorPlot(spec: IndicatorSpec, payload: unknown, colors: Plo
     const upper = asNums(record.upper);
     const lower = asNums(record.lower);
     if (!mid || !upper || !lower) return empty;
-    const last = lastOf(mid);
+    const readoutAt = numberReadout(spec.label, mid, formatDong);
     return {
       pane: "price",
       series: [
@@ -158,26 +174,28 @@ export function indicatorPlot(spec: IndicatorSpec, payload: unknown, colors: Plo
         lineSeries("Lower", lower, colors.faint, true),
       ],
       axis: null,
-      readout: last == null ? null : { label: spec.label, value: formatDong(last) },
+      readout: readoutAt(null),
+      readoutAt,
     };
   }
 
   if (spec.draw === "volume-line") {
     const data = asNums(payload);
     if (!data) return empty;
-    const last = lastOf(data);
+    const readoutAt = numberReadout(spec.label, data, formatDong);
     return {
       pane: "volume",
       series: [lineSeries(spec.label, data, color)],
       axis: null,
-      readout: last == null ? null : { label: spec.label, value: formatDong(last) },
+      readout: readoutAt(null),
+      readoutAt,
     };
   }
 
   if (spec.draw === "rsi") {
     const data = asNums(payload);
     if (!data) return empty;
-    const last = lastOf(data);
+    const readoutAt = numberReadout(spec.label, data, formatOsc);
     return {
       pane: "separate",
       series: [
@@ -194,7 +212,8 @@ export function indicatorPlot(spec: IndicatorSpec, payload: unknown, colors: Plo
         },
       ],
       axis: { min: 0, max: 100, scale: false, interval: 50 },
-      readout: last == null ? null : { label: spec.label, value: formatOsc(last) },
+      readout: readoutAt(null),
+      readoutAt,
     };
   }
 
@@ -205,8 +224,15 @@ export function indicatorPlot(spec: IndicatorSpec, payload: unknown, colors: Plo
     const signal = asNums(record.signal);
     const hist = asNums(record.hist);
     if (!macd || !signal || !hist) return empty;
-    const last = lastOf(macd);
-    const lastSignal = lastOf(signal);
+    const readoutAt = (index: number | null): IndicatorReadout | null => {
+      const macdValue = valueAt(macd, index);
+      const signalValue = valueAt(signal, index);
+      if (macdValue == null) return null;
+      return {
+        label: "MACD",
+        value: signalValue == null ? formatDong(macdValue) : `${formatDong(macdValue)} / ${formatDong(signalValue)}`,
+      };
+    };
     return {
       pane: "separate",
       series: [
@@ -222,22 +248,21 @@ export function indicatorPlot(spec: IndicatorSpec, payload: unknown, colors: Plo
         },
       ],
       axis: { scale: true },
-      readout:
-        last == null
-          ? null
-          : { label: "MACD", value: lastSignal == null ? formatDong(last) : `${formatDong(last)} / ${formatDong(lastSignal)}` },
+      readout: readoutAt(null),
+      readoutAt,
     };
   }
 
   if (spec.draw === "atr") {
     const data = asNums(payload);
     if (!data) return empty;
-    const last = lastOf(data);
+    const readoutAt = numberReadout(spec.label, data, formatDong);
     return {
       pane: "separate",
       series: [lineSeries(spec.label, data, color)],
       axis: { scale: true },
-      readout: last == null ? null : { label: spec.label, value: formatDong(last) },
+      readout: readoutAt(null),
+      readoutAt,
     };
   }
 

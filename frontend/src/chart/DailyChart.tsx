@@ -1,15 +1,65 @@
+import type { ECharts } from "echarts";
 import ReactECharts from "echarts-for-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Bar } from "../api";
 import { IconButton, formatDong } from "../design-system";
 import { ToolGlyph } from "../design-system/icons";
 import { buildDailyOption, type ChartColors } from "./dailyOption";
-import type { Drawing, DrawingTool } from "./drawings";
+import { barIndexFromPixel, drawingsAfterClick, type Drawing, type DrawingTool } from "./drawings";
 import { DEFAULT_INDICATOR_IDS } from "./indicators";
 import { IndicatorPicker } from "./IndicatorPicker";
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#e6edf3";
+}
+
+type DrawState = {
+  tool: DrawingTool;
+  drawings: Drawing[];
+  bars: Bar[];
+  onDrawings: (d: Drawing[]) => void;
+  onHover: (index: number | null) => void;
+};
+
+const boundCharts = new WeakSet<object>();
+
+function bindDrawingClicks(chart: ECharts, stateRef: { current: DrawState }) {
+  if (boundCharts.has(chart)) return;
+  boundCharts.add(chart);
+  chart.getZr().on("click", (event) => {
+    const { offsetX, offsetY } = event as { offsetX?: number; offsetY?: number };
+    if (offsetX == null || offsetY == null) return;
+    const { tool, drawings, bars, onDrawings } = stateRef.current;
+    if (tool === "pan") return;
+    const pixel: [number, number] = [offsetX, offsetY];
+    if (!chart.containPixel({ gridIndex: 0 }, pixel)) return;
+    let raw: unknown = null;
+    try {
+      raw = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, pixel);
+    } catch {
+      raw = null;
+    }
+    const next = drawingsAfterClick(drawings, tool, bars, raw);
+    if (next !== null) onDrawings(next);
+  });
+  const onMove = (event: { offsetX?: number; offsetY?: number }) => {
+    const { offsetX, offsetY } = event;
+    if (offsetX == null || offsetY == null) return;
+    const pixel: [number, number] = [offsetX, offsetY];
+    if (!chart.containPixel("grid", pixel)) {
+      stateRef.current.onHover(null);
+      return;
+    }
+    let raw: unknown = null;
+    try {
+      raw = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, pixel);
+    } catch {
+      raw = null;
+    }
+    stateRef.current.onHover(barIndexFromPixel(stateRef.current.bars.length, raw));
+  };
+  chart.getZr().on("mousemove", onMove);
+  chart.getZr().on("globalout", () => stateRef.current.onHover(null));
 }
 
 export function DailyChart({
@@ -50,8 +100,15 @@ export function DailyChart({
       accent: cssVar("--accent"),
       warn: cssVar("--warn"),
     };
-    return buildDailyOption({ bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, colors });
-  }, [bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor]);
+    return buildDailyOption({ bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, colors, tool });
+  }, [bars, drawings, indicatorIds, indicatorData, refPrice, ceiling, floor, tool]);
+
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const stateRef = useRef<DrawState>({ tool, drawings, bars, onDrawings, onHover: setHoverIndex });
+  stateRef.current = { tool, drawings, bars, onDrawings, onHover: setHoverIndex };
+  useEffect(() => {
+    setHoverIndex(null);
+  }, [bars]);
 
   const tools: { id: DrawingTool; label: string }[] = [
     { id: "pan", label: "pan" },
@@ -63,8 +120,9 @@ export function DailyChart({
     { id: "pin", label: "pin" },
     { id: "delete", label: "delete selected" },
   ];
-  const last = bars.at(-1);
-  const volClass = last && last.close >= last.open ? "up" : "down";
+  const bar = hoverIndex != null && bars[hoverIndex] ? bars[hoverIndex] : bars.at(-1);
+  const volClass = bar && bar.close >= bar.open ? "up" : "down";
+  const readouts = view.readoutAt(hoverIndex);
 
   return (
     <div className="chart-stack" data-ticker={ticker}>
@@ -77,22 +135,23 @@ export function DailyChart({
         <span className="tool-sep" />
         <IndicatorPicker value={indicatorIds} onChange={onIndicator} />
       </div>
-      {last ? (
+      {bar ? (
         <div className="ohlc">
+          <span>{bar.date}</span>
           <span>
-            O <b>{formatDong(last.open)}</b>
+            O <b>{formatDong(bar.open)}</b>
           </span>
           <span>
-            H <b>{formatDong(last.high)}</b>
+            H <b>{formatDong(bar.high)}</b>
           </span>
           <span>
-            L <b>{formatDong(last.low)}</b>
+            L <b>{formatDong(bar.low)}</b>
           </span>
           <span>
-            C <b>{formatDong(last.close)}</b>
+            C <b>{formatDong(bar.close)}</b>
           </span>
-          <span className={volClass}>Vol {formatDong(last.volume)}</span>
-          {view.readouts.map((item) => (
+          <span className={volClass}>Vol {formatDong(bar.volume)}</span>
+          {readouts.map((item) => (
             <span key={item.label}>
               {item.label} <b>{item.value}</b>
             </span>
@@ -102,31 +161,8 @@ export function DailyChart({
       <ReactECharts
         option={view.option}
         notMerge
-        style={{ height: 520 }}
-        onEvents={{
-          click: (params: { dataIndex?: number; value?: unknown }) => {
-            if (tool === "pan" || params.dataIndex == null) return;
-            const bar = bars[params.dataIndex];
-            if (!bar) return;
-            const price = typeof params.value === "number" ? params.value : bar.close;
-            if (tool === "delete") {
-              onDrawings(drawings.slice(0, -1));
-              return;
-            }
-            if (tool === "horizontal" || tool === "pin" || tool === "text") {
-              onDrawings([...drawings, { tool, points: [{ date: bar.date, price: Number(price) }] }]);
-              return;
-            }
-            const previous = drawings[drawings.length - 1];
-            if (previous && previous.tool === tool && previous.points.length === 1) {
-              const next = drawings.slice(0, -1);
-              const pts = [...previous.points, { date: bar.date, price: Number(price) }];
-              onDrawings([...next, { tool, points: pts }]);
-              return;
-            }
-            onDrawings([...drawings, { tool, points: [{ date: bar.date, price: Number(price) }] }]);
-          },
-        }}
+        style={{ height: 520, cursor: tool === "pan" ? "default" : "crosshair" }}
+        onChartReady={(chart) => bindDrawingClicks(chart as ECharts, stateRef)}
       />
     </div>
   );

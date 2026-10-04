@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type Bar, type SymbolRow } from "../api";
 import { displayBoard } from "./Market";
@@ -104,10 +104,14 @@ export function SymbolPage() {
     };
   }, [tab, t]);
 
+  const saveTimer = useRef<number | null>(null);
   const persistDrawings = (d: Drawing[]) => {
     setDrawings(d);
-    window.setTimeout(() => {
-      api.saveDrawings(t, d).then(() => {
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    const ticker = t;
+    saveTimer.current = window.setTimeout(() => {
+      saveTimer.current = null;
+      api.saveDrawings(ticker, d).then(() => {
         setToast("Saved");
         window.setTimeout(() => setToast(null), 3000);
       });
