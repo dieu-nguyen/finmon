@@ -98,17 +98,20 @@ export function MultiSelect({
     event.stopPropagation();
   }
 
+  function openFromControl(event: MouseEvent<HTMLDivElement>) {
+    if (open || (event.target as HTMLElement).closest("button")) return;
+    event.stopPropagation();
+    openWith("");
+  }
+
   const empty = onQuery && !needle ? "Type to search" : "No matches";
 
   return (
     <div className="indicator-picker" ref={rootRef}>
       <div
         className={open ? "indicator-picker-control is-open" : "indicator-picker-control"}
-        onMouseDown={(event) => {
-          if (open || (event.target as HTMLElement).closest("button")) return;
-          event.stopPropagation();
-          openWith("");
-        }}
+        onMouseDown={openFromControl}
+        onClick={openFromControl}
       >
         {open ? (
           <input
