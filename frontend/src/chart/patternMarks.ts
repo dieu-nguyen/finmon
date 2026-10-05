@@ -1,9 +1,4 @@
-export const NAMED_PATTERNS = [
-  { id: "double_bottom", label: "Double bottom" },
-  { id: "double_top", label: "Double top" },
-  { id: "head_and_shoulders", label: "Head and shoulders" },
-  { id: "inverse_head_and_shoulders", label: "Inverse head and shoulders" },
-] as const;
+export type PatternName = { id: string; label: string };
 
 export type PatternPoint = { date: string; price: number; role?: string };
 
@@ -18,8 +13,9 @@ export type PatternMark = {
   neckline: { date: string; price: number }[];
 };
 
-export function patternLabel(id: string | null | undefined): string {
-  return NAMED_PATTERNS.find((row) => row.id === id)?.label ?? "";
+export function patternLabel(id: string | null | undefined, catalog: PatternName[] = []): string {
+  if (!id) return "";
+  return catalog.find((row) => row.id === id)?.label ?? id;
 }
 
 export function stateLabel(state: string | null | undefined): string {

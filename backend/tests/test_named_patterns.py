@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.clients.telegram import TelegramSender
 from app.config import Settings
-from app.jobs.pattern_scan import format_named_message, load_one_window, load_windows, run_pattern_scan
+from app.jobs.pattern_scan import format_named_message, load_windows, run_pattern_scan
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns import method_for
 from app.patterns.lookalike import MethodResult
@@ -223,68 +223,209 @@ def test_universe_skips_bond_index_hcx_and_futures(db):
     assert set(windows) == {"KEEP"}
 
 
-def test_saved_named_pattern_and_one_ticker_agree(client, db, monkeypatch):
+def test_backfill_scan_does_not_run_named_patterns(db, monkeypatch):
+    window = _double_bottom(74, 82, 89)
+    db.add(_symbol("VHM", name="Vinhomes"))
+    db.add_all(_ohlc("VHM", window))
+    db.add(PatternDef(name="Bottoms", kind="named", spec={"pattern": "double_bottom"}, schedule="daily", enabled=True))
+    db.add(PatternDef(name="Like VHM", kind="lookalike", spec={"reference": "VHM", "min_score": 0.85, "top_k": 20}, schedule="daily", enabled=True))
+    db.commit()
+    named_calls: list[dict] = []
+
+    def spy(spec, windows):
+        named_calls.append(spec)
+        return score_named(spec, windows)
+
+    monkeypatch.setattr("app.jobs.pattern_scan.score_named", spy)
+    monkeypatch.setattr(TelegramSender, "send", lambda self, text: True)
+    run_pattern_scan(db, AS_OF, Settings(telegram_bot_token="t", telegram_chat_id="c"))
+    assert named_calls == []
+    runs = list(db.scalars(select(ScanRun)).all())
+    defs = {row.id: row for row in db.scalars(select(PatternDef)).all()}
+    assert any(defs[row.pattern_id].kind == "lookalike" for row in runs)
+    assert not any(defs[row.pattern_id].name == "Bottoms" for row in runs)
+    job = (ROOT / "app/jobs/pattern_scan.py").read_text()
+    assert 'PatternDef.kind == "lookalike"' in job
+    quotes = (ROOT / "app/main.py").read_text().split("def _run_quotes", 1)[1].split("\ndef ", 1)[0]
+    assert "named" not in quotes
+    assert "pattern_scan" not in quotes
+
+
+def test_symbol_get_does_not_scan(client, db, monkeypatch):
+    window = _double_bottom(74, 82, 89)
+    db.add(_symbol("VHM"))
+    db.add_all(_ohlc("VHM", window))
+    db.commit()
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("detect")
+
+    monkeypatch.setattr("app.patterns.named.detect", boom)
+    monkeypatch.setattr("app.jobs.pattern_scan.detect", boom)
+    resp = client.get("/api/symbols/VHM/named-patterns")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["matches"] == []
+    assert body["patterns"] == []
+    assert body["as_of"] is None
+    assert db.scalars(select(ScanRun)).all() == []
+
+
+def test_triggered_ticker_scan_is_stored_and_reread_without_detect(client, db, monkeypatch):
+    sent: list[str] = []
+    monkeypatch.setattr(TelegramSender, "send", lambda self, text: sent.append(text) or True)
     window = _double_bottom(74, 82, 89)
     db.add(_symbol("VHM", name="Vinhomes"))
     db.add_all(_ohlc("VHM", window))
     db.commit()
-    created = client.post(
-        "/api/patterns",
-        json={"name": "Bottoms", "kind": "named", "pattern": "double_bottom", "enabled": True},
-    )
-    assert created.status_code == 200
-    body = created.json()
-    assert body["kind"] == "named"
-    assert body["spec"] == {"pattern": "double_bottom"}
-    assert "reference" not in body["spec"]
+    first = client.post("/api/symbols/VHM/named-patterns", json={"patterns": ["double_bottom", "double_bottom"]})
+    assert first.status_code == 200
+    body = first.json()
+    assert body["patterns"] == ["double_bottom"]
+    assert len(body["matches"]) == 1
+    match = body["matches"][0]
+    assert match["pattern"] == "double_bottom"
+    assert match["state"] == "forming"
+    assert match["score"] == 1
+    assert match["swings"]["points"][0]["date"]
+    assert sent == []
+    run = db.scalars(select(ScanRun)).one()
+    assert run.status == "ok"
+    assert run.request["mode"] == "ticker"
+    assert run.request["patterns"] == ["double_bottom"]
+    assert run.request["tickers"] == ["VHM"]
+    stored = db.scalars(select(ScanHit)).one()
+    assert stored.state == "forming"
+    assert stored.swings["pattern"] == "double_bottom"
+    for row in list(db.scalars(select(DailyBar)).all()):
+        db.delete(row)
+    db.commit()
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("detect")
+
+    monkeypatch.setattr("app.patterns.named.detect", boom)
+    monkeypatch.setattr("app.jobs.pattern_scan.detect", boom)
+    again = client.get("/api/symbols/VHM/named-patterns")
+    assert again.status_code == 200
+    reread = again.json()["matches"][0]
+    assert reread["score"] == match["score"]
+    assert reread["state"] == match["state"]
+    assert reread["swings"] == match["swings"]
+    assert sent == []
+
+
+def test_market_subset_does_not_walk_other_tickers(client, db, monkeypatch):
+    window = _double_bottom(74, 82, 89)
+    db.add(_symbol("VHM", name="Vinhomes"))
+    db.add(_symbol("FPT", name="FPT"))
+    db.add_all(_ohlc("VHM", window))
+    db.add_all(_ohlc("FPT", window))
+    db.commit()
+    seen: list[list[str]] = []
+    from app.jobs.pattern_scan import _fetch_windows
+
+    def spy(session, as_of, tickers):
+        seen.append(list(tickers))
+        return _fetch_windows(session, as_of, tickers)
+
+    monkeypatch.setattr("app.jobs.pattern_scan._fetch_windows", spy)
     sent: list[str] = []
     monkeypatch.setattr(TelegramSender, "send", lambda self, text: sent.append(text) or True)
-    run_pattern_scan(db, AS_OF, Settings(telegram_bot_token="t", telegram_chat_id="c"))
-    hits = client.get(f"/api/patterns/{body['id']}/hits").json()
-    assert hits["kind"] == "named"
-    assert hits["pattern"] == "double_bottom"
-    assert hits["reference"] == ""
-    assert len(hits["hits"]) == 1
-    row = hits["hits"][0]
-    assert row["ticker"] == "VHM"
-    assert row["name"] == "Vinhomes"
-    assert row["state"] == "forming"
-    assert row["score"] == 1
-    assert row["swings"]["points"][0]["date"]
-    assert row["window_start"] == row["swings"]["points"][0]["date"]
-    assert row["window_end"] == AS_OF.isoformat()
-    check = client.get("/api/symbols/VHM/named-patterns").json()
-    assert check["matches"]
-    live = next(item for item in check["matches"] if item["pattern"] == "double_bottom")
-    assert live["score"] == row["score"]
-    assert live["state"] == row["state"]
-    assert live["swings"] == row["swings"]
+    scored: list[str] = []
+
+    def spy_score(spec, windows):
+        scored.append(spec["pattern"])
+        return score_named(spec, windows)
+
+    monkeypatch.setattr("app.jobs.pattern_scan.score_named", spy_score)
+    resp = client.post(
+        "/api/named-scans",
+        json={"patterns": ["double_top", "double_bottom"], "scope": "subset", "tickers": ["VHM"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["patterns"] == ["double_bottom", "double_top"]
+    assert body["scope"] == "subset"
+    assert body["tickers"] == ["VHM"]
+    assert body["hits"]
+    assert {hit["ticker"] for hit in body["hits"]} == {"VHM"}
+    assert seen
+    assert all("FPT" not in batch for batch in seen)
+    assert all(batch == ["VHM"] for batch in seen)
+    assert scored == ["double_bottom", "double_top"]
     assert len(sent) == 1
     assert "Reference" not in sent[0]
     assert "forming" in sent[0]
+    assert "\n" in sent[0]
+    again = client.get("/api/named-scans")
+    assert again.json()["hits"][0]["ticker"] == "VHM"
+    assert again.json()["tickers"] == ["VHM"]
+    from app.models import AlertDelivery
+
+    assert db.scalars(select(AlertDelivery)).all() == []
+
+
+def test_failed_market_run_keeps_previous_hits_and_skips_telegram(client, db, monkeypatch):
+    window = _double_bottom(74, 82, 89)
+    db.add(_symbol("VHM", name="Vinhomes"))
+    db.add_all(_ohlc("VHM", window))
+    db.commit()
+    sent: list[str] = []
+
+    def send(self, text):
+        sent.append(text)
+        return True
+
+    monkeypatch.setattr(TelegramSender, "send", send)
+    ok = client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "all"})
+    assert ok.status_code == 200
+    assert ok.json()["scope"] == "all"
+    assert ok.json()["tickers"] == []
+    assert len(sent) == 1
 
     def boom(_spec, _windows):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("app.jobs.pattern_scan.method_for", lambda _kind: boom)
-    run_pattern_scan(db, AS_OF, Settings(telegram_bot_token="t", telegram_chat_id="c"))
-    again = client.get(f"/api/patterns/{body['id']}/hits").json()
-    assert again["hits"][0]["ticker"] == "VHM"
-    assert again["hits"][0]["state"] == "forming"
-    failed = db.scalars(select(ScanRun).where(ScanRun.status == "failed")).all()
-    assert len(failed) == 1
-    assert db.scalars(select(ScanHit).where(ScanHit.run_id == failed[0].id)).all() == []
+    monkeypatch.setattr("app.jobs.pattern_scan.score_named", boom)
+    failed = client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "all"})
+    assert failed.status_code == 500
     assert len(sent) == 1
+    again = client.get("/api/named-scans")
+    assert again.json()["hits"][0]["ticker"] == "VHM"
+    bad = db.scalars(select(ScanRun).where(ScanRun.status == "failed")).all()
+    assert len(bad) == 1
+    assert db.scalars(select(ScanHit).where(ScanHit.run_id == bad[0].id)).all() == []
 
 
-def test_one_ticker_check_does_not_send_telegram(client, db, monkeypatch):
-    sent: list[str] = []
-    monkeypatch.setattr(TelegramSender, "send", lambda self, text: sent.append(text) or True)
-    empty = client.get("/api/symbols/NONE/named-patterns")
-    assert empty.status_code == 200
-    assert empty.json()["matches"] == []
-    assert sent == []
-    assert load_one_window(db, "NONE") is None
+def test_failed_named_telegram_keeps_the_ok_run(client, db, monkeypatch):
+    window = _double_bottom(74, 82, 89)
+    db.add(_symbol("VHM"))
+    db.add_all(_ohlc("VHM", window))
+    db.commit()
+
+    def boom(self, text):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(TelegramSender, "send", boom)
+    resp = client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "subset", "tickers": ["vhm"]})
+    assert resp.status_code == 200
+    assert resp.json()["hits"][0]["ticker"] == "VHM"
+    assert resp.json()["tickers"] == ["VHM"]
+    run = db.scalars(select(ScanRun).where(ScanRun.status == "ok")).one()
+    assert run.request["tickers"] == ["VHM"]
+
+
+def test_empty_selection_does_not_scan(client, db):
+    assert client.post("/api/named-scans", json={"patterns": [], "scope": "all"}).status_code == 400
+    assert client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "subset", "tickers": []}).status_code == 400
+    assert client.post("/api/symbols/VHM/named-patterns", json={"patterns": []}).status_code == 400
+    assert client.post("/api/named-scans", json={"patterns": ["bull_flag"], "scope": "all"}).status_code == 400
+    assert db.scalars(select(ScanRun)).all() == []
+    catalog = client.get("/api/pattern-catalog")
+    assert catalog.status_code == 200
+    assert [row["id"] for row in catalog.json()] == list(PATTERNS)
+    assert "bull_flag" not in [row["id"] for row in catalog.json()]
 
 
 def test_api_accepts_the_four_names_and_rejects_others(client):

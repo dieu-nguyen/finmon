@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.clients.telegram import TelegramSender
 from app.config import Settings, get_settings
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun, Symbol
-from app.patterns import MethodResult, method_for
+from app.patterns import Hit, MethodResult, method_for
+from app.patterns.named import PATTERN_LABELS, detect, score_named
 from app.patterns.windows import Window
 
 WINDOW = 90
@@ -65,14 +66,17 @@ def _fetch_windows(db: Session, as_of: date, tickers: list[str]) -> dict[str, Wi
     return windows
 
 
-def load_windows(db: Session, as_of: date) -> tuple[dict[str, Window], int]:
-    symbols = db.scalars(
-        select(Symbol).where(
-            Symbol.listed.is_(True),
-            Symbol.type.in_(("stock", "etf")),
-            Symbol.board.in_(_BOARDS),
-        )
-    ).all()
+def load_windows(db: Session, as_of: date, tickers: list[str] | None = None) -> tuple[dict[str, Window], int]:
+    stmt = select(Symbol).where(
+        Symbol.listed.is_(True),
+        Symbol.type.in_(("stock", "etf")),
+        Symbol.board.in_(_BOARDS),
+    )
+    if tickers is not None:
+        if not tickers:
+            return {}, 0
+        stmt = stmt.where(Symbol.ticker.in_(tickers))
+    symbols = db.scalars(stmt).all()
     windows = _fetch_windows(db, as_of, [row.ticker for row in symbols])
     return windows, len(windows)
 
@@ -89,7 +93,11 @@ def format_named_message(name: str, as_of: date, result: MethodResult) -> str:
         return f"{name}: as of {as_of.isoformat()} — nothing cleared the floor"
     lines = [name, f"as of {as_of.isoformat()}"]
     for hit in result.hits:
-        lines.append(f"{hit.ticker} {hit.score:.4f} {hit.state}")
+        label = PATTERN_LABELS.get(hit.pattern or "", "")
+        tail = f" {hit.state}" if hit.state else ""
+        if label:
+            tail = f"{tail} {label}"
+        lines.append(f"{hit.ticker} {hit.score:.4f}{tail}")
     return "\n".join(lines)
 
 
@@ -179,7 +187,7 @@ def run_pattern_scan(db: Session, as_of: date, settings: Settings | None = None)
     patterns = list(
         db.scalars(
             select(PatternDef)
-            .where(PatternDef.enabled.is_(True), PatternDef.schedule == "daily")
+            .where(PatternDef.enabled.is_(True), PatternDef.schedule == "daily", PatternDef.kind == "lookalike")
             .order_by(PatternDef.id)
         )
     )
@@ -191,3 +199,200 @@ def run_pattern_scan(db: Session, as_of: date, settings: Settings | None = None)
             _score_one(db, pattern, windows, eligible_count, as_of, sender)
     finally:
         sender._client.close()
+
+
+class NamedScanFailed(Exception):
+    """Scoring failed after a failed scan_run was stored."""
+
+
+MANUAL_PATTERN_NAME = "Named patterns"
+
+
+def _manual_pattern(db: Session) -> PatternDef:
+    row = db.scalar(select(PatternDef).where(PatternDef.name == MANUAL_PATTERN_NAME, PatternDef.kind == "named"))
+    if row is None:
+        row = PatternDef(
+            name=MANUAL_PATTERN_NAME,
+            kind="named",
+            spec={"manual": True},
+            schedule="manual",
+            enabled=False,
+        )
+        db.add(row)
+        db.flush()
+    return row
+
+
+def _latest_as_of(db: Session, tickers: list[str] | None) -> date | None:
+    stmt = select(Symbol.ticker).where(
+        Symbol.listed.is_(True),
+        Symbol.type.in_(("stock", "etf")),
+        Symbol.board.in_(_BOARDS),
+    )
+    if tickers is not None:
+        if not tickers:
+            return None
+        stmt = stmt.where(Symbol.ticker.in_(tickers))
+    eligible = list(db.scalars(stmt).all())
+    if not eligible:
+        return None
+    return db.scalar(select(func.max(DailyBar.date)).where(DailyBar.source == "dnse", DailyBar.ticker.in_(eligible)))
+
+
+def _save_named_run(
+    db: Session,
+    *,
+    status: str,
+    as_of: date,
+    eligible: int,
+    compared: int,
+    request: dict,
+    hits: list[Hit],
+) -> ScanRun:
+    pattern = _manual_pattern(db)
+    run = ScanRun(
+        pattern_id=pattern.id,
+        started_at=_now(),
+        finished_at=_now(),
+        status=status,
+        eligible_count=eligible,
+        compared_count=compared,
+        as_of=as_of,
+        reference_compared=False,
+        request=request,
+    )
+    db.add(run)
+    db.flush()
+    if status == "ok":
+        for hit in hits:
+            db.add(
+                ScanHit(
+                    run_id=run.id,
+                    pattern_id=pattern.id,
+                    ticker=hit.ticker,
+                    score=hit.score,
+                    window_start=hit.window_start,
+                    window_end=hit.window_end,
+                    swings=hit.swings,
+                    state=hit.state,
+                )
+            )
+    db.commit()
+    return run
+
+
+def _notify_market(settings: Settings, as_of: date, hits: list[Hit]) -> None:
+    sender = TelegramSender(settings.telegram_bot_token, settings.telegram_chat_id)
+    try:
+        message = format_named_message(
+            "Named patterns",
+            as_of,
+            MethodResult(hits=hits, compared_count=len(hits), reference_compared=True),
+        )
+        sender.send(message)
+    except Exception:
+        return
+    finally:
+        sender._client.close()
+
+
+def trigger_named_market(
+    db: Session,
+    patterns: list[str],
+    scope: str,
+    tickers: list[str],
+    settings: Settings | None = None,
+) -> None:
+    settings = settings or get_settings()
+    scope_tickers = list(tickers) if scope == "subset" else []
+    request = {"mode": "market", "patterns": list(patterns), "scope": scope, "tickers": scope_tickers}
+    only = scope_tickers if scope == "subset" else None
+    try:
+        as_of = _latest_as_of(db, only) or date.today()
+        windows, eligible = load_windows(db, as_of, only)
+        hits: list[Hit] = []
+        for name in patterns:
+            hits.extend(score_named({"pattern": name}, windows).hits)
+        compared = len(windows)
+    except Exception:
+        db.rollback()
+        _save_named_run(
+            db,
+            status="failed",
+            as_of=date.today(),
+            eligible=0,
+            compared=0,
+            request=request,
+            hits=[],
+        )
+        raise NamedScanFailed
+    _save_named_run(
+        db,
+        status="ok",
+        as_of=as_of,
+        eligible=eligible,
+        compared=compared,
+        request=request,
+        hits=hits,
+    )
+    _notify_market(settings, as_of, hits)
+
+
+def trigger_named_ticker(db: Session, ticker: str, patterns: list[str]) -> None:
+    symbol = ticker.strip().upper()
+    request = {"mode": "ticker", "patterns": list(patterns), "scope": "ticker", "tickers": [symbol]}
+    try:
+        window = load_one_window(db, symbol)
+        as_of = window.window_end if window is not None else date.today()
+        hits: list[Hit] = []
+        if window is not None:
+            for name in patterns:
+                found = detect(window, name)
+                if found is not None:
+                    hits.append(
+                        Hit(
+                            ticker=symbol,
+                            score=found.score,
+                            window_start=found.window_start,
+                            window_end=found.window_end,
+                            state=found.state,
+                            swings=found.swings,
+                            pattern=found.pattern,
+                        )
+                    )
+        eligible = 1 if window is not None else 0
+    except Exception:
+        db.rollback()
+        _save_named_run(
+            db,
+            status="failed",
+            as_of=date.today(),
+            eligible=0,
+            compared=0,
+            request=request,
+            hits=[],
+        )
+        raise NamedScanFailed
+    _save_named_run(
+        db,
+        status="ok",
+        as_of=as_of,
+        eligible=eligible,
+        compared=eligible,
+        request=request,
+        hits=hits,
+    )
+
+
+def latest_named_run(db: Session, *, mode: str, ticker: str | None = None) -> ScanRun | None:
+    rows = db.scalars(
+        select(ScanRun).where(ScanRun.status == "ok", ScanRun.request.is_not(None)).order_by(ScanRun.id.desc())
+    ).all()
+    for row in rows:
+        req = row.request or {}
+        if req.get("mode") != mode:
+            continue
+        if ticker is not None and ticker not in (req.get("tickers") or []):
+            continue
+        return row
+    return None

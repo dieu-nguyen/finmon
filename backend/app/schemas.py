@@ -138,4 +138,28 @@ class NamedMatchOut(BaseModel):
 class NamedCheckOut(BaseModel):
     ticker: str
     as_of: date | None = None
+    patterns: list[str] = Field(default_factory=list)
     matches: list[NamedMatchOut] = Field(default_factory=list)
+
+
+class CatalogItem(BaseModel):
+    id: str
+    label: str
+
+
+class NamedTickerIn(BaseModel):
+    patterns: list[str] = Field(default_factory=list)
+
+
+class NamedMarketIn(BaseModel):
+    patterns: list[str] = Field(default_factory=list)
+    scope: Literal["all", "subset"] = "all"
+    tickers: list[str] = Field(default_factory=list)
+
+
+class NamedMarketOut(BaseModel):
+    as_of: date | None = None
+    patterns: list[str] = Field(default_factory=list)
+    scope: Literal["all", "subset"] = "all"
+    tickers: list[str] = Field(default_factory=list)
+    hits: list[HitOut] = Field(default_factory=list)

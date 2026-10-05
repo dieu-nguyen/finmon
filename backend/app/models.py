@@ -165,6 +165,7 @@ class ScanRun(Base):
     compared_count: Mapped[int] = mapped_column(Integer, default=0)
     as_of: Mapped[date] = mapped_column(Date)
     reference_compared: Mapped[bool] = mapped_column(Boolean, default=False)
+    request: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class ScanHit(Base):

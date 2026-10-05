@@ -330,9 +330,25 @@ h1, h2, h3 { margin: 0; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.pattern-readout .pattern-empty {
+.pattern-readout .pattern-empty,
+.scan-bar .pattern-empty {
   color: var(--text-muted);
   font-size: var(--fs-xs);
+}
+.scan-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.scan-summary {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+.section-label {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
 }
 .tool-row {
   display: flex;
