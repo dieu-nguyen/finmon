@@ -4,6 +4,7 @@ import { Gallery } from "./pages/Gallery";
 import { Market } from "./pages/Market";
 import { Alerts } from "./pages/Alerts";
 import { Compare } from "./pages/Compare";
+import { Patterns } from "./pages/Patterns";
 import { Scans } from "./pages/Scans";
 import { SymbolPage } from "./pages/Symbol";
 
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/market" element={<Market />} />
           <Route path="/alerts" element={<Alerts />} />
+          <Route path="/patterns" element={<Patterns />} />
           <Route path="/scans" element={<Scans />} />
           <Route path="/scans/:patternId/compare/:ticker" element={<Compare />} />
           <Route path="/symbol/:ticker" element={<SymbolPage />} />

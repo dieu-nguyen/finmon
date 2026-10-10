@@ -94,6 +94,8 @@ These four are the first build. Each name is one value of `spec.pattern` on kind
 | Head and shoulders | `head_and_shoulders` | Three highs. The middle one is clearly higher. The two shoulders are close in price. The swings are shoulder, trough, higher head, trough, shoulder. The neckline runs through the two troughs. The last swing, or the confirming close, falls in the last 10 trading sessions. |
 | Inverse head and shoulders | `inverse_head_and_shoulders` | Three lows. The middle one is clearly lower. The two shoulders are close in price. The swings are shoulder, peak, lower head, peak, shoulder. The neckline runs through the two peaks. The last swing, or the confirming close, falls in the last 10 trading sessions. |
 
+The Patterns page introduces this catalog: the shape, a schematic of the ideal form, and how to read the neckline, forming versus confirmed, and a close through the neckline. Favorites pin to the top. The score on each card is a teaching rank for how often the pattern is taught. Scan on that page runs only for the four built patterns. It starts the same manual market scan as Scans, for that one pattern on all eligible tickers. Triangles, flags, cup and handle, wedges, and rounding bottom stay on the page with Scan disabled.
+
 ### Later names
 
 Same kind. Not in the first build.
