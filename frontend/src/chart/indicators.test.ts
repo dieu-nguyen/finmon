@@ -235,6 +235,30 @@ describe("indicator drawing", () => {
       ]),
     );
 
+    const twoLines: PatternMark = {
+      points: [{ date: "2026-01-02", price: 9, role: "high" }],
+      neckline: [
+        { date: "2026-01-02", price: 12 },
+        { date: "2026-01-04", price: 12 },
+        { date: "2026-01-02", price: 8 },
+        { date: "2026-01-04", price: 10 },
+      ],
+    };
+    const bounded = optionFor([], {}, { patternMark: twoLines });
+    const boundedCandle = seriesOf(bounded).find((item) => item.type === "candlestick");
+    expect(boundedCandle?.markLine?.data).toEqual(
+      expect.arrayContaining([
+        [
+          expect.objectContaining({ coord: ["2026-01-02", 12] }),
+          expect.objectContaining({ coord: ["2026-01-04", 12] }),
+        ],
+        [
+          expect.objectContaining({ coord: ["2026-01-02", 8] }),
+          expect.objectContaining({ coord: ["2026-01-04", 10] }),
+        ],
+      ]),
+    );
+
     const cleared = optionFor(["rsi"], { "rsi:14": [30, 70] }, { patternMark: null });
     const bare = seriesOf(cleared).find((item) => item.type === "candlestick");
     expect(bare?.markPoint?.data).toEqual([]);

@@ -59,26 +59,19 @@ describe("Patterns catalog", () => {
     expect(names()[1]).toBe("Double bottom");
   });
 
-  it("enables Scan for the four built patterns and disables it for a flag and a triangle", () => {
+  it("enables Scan for every pattern in the catalog", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     renderPage();
 
-    for (const name of ["Double bottom", "Double top", "Head and shoulders", "Inverse head and shoulders"]) {
-      const button = screen.getByRole("button", { name: `Scan ${name}` });
+    expect(PATTERN_GUIDE.length).toBeGreaterThanOrEqual(20);
+    for (const pattern of PATTERN_GUIDE) {
+      expect(pattern.scan, pattern.id).toBe(true);
+      const button = screen.getByRole("button", { name: `Scan ${pattern.name}` });
       expect(button).toBeEnabled();
       expect(button).toHaveTextContent("Scan");
+      expect(screen.getByRole("article", { name: pattern.name }).querySelector(".pattern-scan-note")).toBeNull();
     }
-    expect(screen.getByRole("article", { name: "Double bottom" }).querySelector(".pattern-scan-note")).toBeNull();
-
-    for (const name of ["Bull flag", "Ascending triangle"]) {
-      const card = screen.getByRole("article", { name });
-      expect(screen.getByRole("button", { name: `Scan ${name}` })).toBeDisabled();
-      expect(card.querySelector(".pattern-scan-note")).toHaveTextContent("Not available yet");
-    }
-
-    fireEvent.click(screen.getByRole("button", { name: "Scan Bull flag" }));
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("starts one market scan for double bottom and opens the Scans result", async () => {

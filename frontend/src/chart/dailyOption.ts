@@ -142,10 +142,10 @@ export function buildDailyOption(input: {
     }
   }
   const neck = input.patternMark?.neckline ?? [];
-  if (neck.length >= 2) {
+  for (let i = 0; i + 1 < neck.length; i += 2) {
     const segment: SegmentMark = [
-      { coord: [neck[0].date, neck[0].price], lineStyle: { color: colors.warn, type: "dashed" } },
-      { coord: [neck[1].date, neck[1].price] },
+      { coord: [neck[i].date, neck[i].price], lineStyle: { color: colors.warn, type: "dashed" } },
+      { coord: [neck[i + 1].date, neck[i + 1].price] },
     ];
     markLineData.push(segment);
   }
