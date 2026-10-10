@@ -9,21 +9,22 @@ from app.clients.telegram import TelegramSender
 from app.config import Settings, get_settings
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns import Hit, MethodResult, method_for
-from app.patterns.named import PATTERN_LABELS, detect, score_named
+from app.patterns.named import PATTERN_LABELS, detect, pattern_lookback, score_named
 from app.patterns.windows import Window
 
 WINDOW = 90
 _BOARDS = ("HOSE", "HNX", "UPCOM", "UPX")
 
 
-def _window_from_group(group: list, as_of: date) -> Window | None:
+def _window_from_group(group: list, as_of: date, length: int = WINDOW) -> Window | None:
     group.sort(key=lambda item: item.date)
     if len(group) < WINDOW:
         return None
     newest = group[-1]
     if newest.date != as_of or newest.source != "dnse":
         return None
-    chosen = group[-WINDOW:]
+    take = length if length > WINDOW else WINDOW
+    chosen = group[-take:]
     return Window(
         closes=[float(item.close) for item in chosen],
         window_start=chosen[0].date,
@@ -34,7 +35,7 @@ def _window_from_group(group: list, as_of: date) -> Window | None:
     )
 
 
-def _fetch_windows(db: Session, as_of: date, tickers: list[str]) -> dict[str, Window]:
+def _fetch_windows(db: Session, as_of: date, tickers: list[str], length: int = WINDOW) -> dict[str, Window]:
     if not tickers:
         return {}
     ranked = (
@@ -52,7 +53,7 @@ def _fetch_windows(db: Session, as_of: date, tickers: list[str]) -> dict[str, Wi
     )
     rows = db.execute(
         select(ranked.c.ticker, ranked.c.date, ranked.c.high, ranked.c.low, ranked.c.close, ranked.c.source).where(
-            ranked.c.rn <= WINDOW
+            ranked.c.rn <= (length if length > WINDOW else WINDOW)
         )
     ).all()
     grouped: dict[str, list] = {}
@@ -60,13 +61,13 @@ def _fetch_windows(db: Session, as_of: date, tickers: list[str]) -> dict[str, Wi
         grouped.setdefault(row.ticker, []).append(row)
     windows: dict[str, Window] = {}
     for ticker, group in grouped.items():
-        window = _window_from_group(group, as_of)
+        window = _window_from_group(group, as_of, length)
         if window is not None:
             windows[ticker] = window
     return windows
 
 
-def load_windows(db: Session, as_of: date, tickers: list[str] | None = None) -> tuple[dict[str, Window], int]:
+def load_windows(db: Session, as_of: date, tickers: list[str] | None = None, length: int = WINDOW) -> tuple[dict[str, Window], int]:
     stmt = select(Symbol).where(
         Symbol.listed.is_(True),
         Symbol.type.in_(("stock", "etf")),
@@ -77,15 +78,15 @@ def load_windows(db: Session, as_of: date, tickers: list[str] | None = None) -> 
             return {}, 0
         stmt = stmt.where(Symbol.ticker.in_(tickers))
     symbols = db.scalars(stmt).all()
-    windows = _fetch_windows(db, as_of, [row.ticker for row in symbols])
+    windows = _fetch_windows(db, as_of, [row.ticker for row in symbols], length)
     return windows, len(windows)
 
 
-def load_one_window(db: Session, ticker: str) -> Window | None:
+def load_one_window(db: Session, ticker: str, length: int = WINDOW) -> Window | None:
     as_of = db.scalar(select(func.max(DailyBar.date)).where(DailyBar.ticker == ticker, DailyBar.source == "dnse"))
     if as_of is None:
         return None
-    return _fetch_windows(db, as_of, [ticker]).get(ticker)
+    return _fetch_windows(db, as_of, [ticker], length).get(ticker)
 
 
 def format_named_message(name: str, as_of: date, result: MethodResult) -> str:
@@ -352,7 +353,7 @@ def trigger_named_market(
     only = scope_tickers if scope == "subset" else None
     try:
         as_of = _latest_as_of(db, only) or date.today()
-        windows, eligible = load_windows(db, as_of, only)
+        windows, eligible = load_windows(db, as_of, only, max(pattern_lookback(name) for name in patterns))
         hits: list[Hit] = []
         for name in patterns:
             hits.extend(score_named({"pattern": name}, windows).hits)
@@ -385,7 +386,7 @@ def trigger_named_ticker(db: Session, ticker: str, patterns: list[str]) -> None:
     symbol = ticker.strip().upper()
     request = {"mode": "ticker", "patterns": list(patterns), "scope": "ticker", "tickers": [symbol]}
     try:
-        window = load_one_window(db, symbol)
+        window = load_one_window(db, symbol, max(pattern_lookback(name) for name in patterns))
         as_of = window.window_end if window is not None else date.today()
         hits: list[Hit] = []
         if window is not None:

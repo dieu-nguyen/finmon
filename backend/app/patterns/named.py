@@ -1,7 +1,8 @@
 """Named patterns on one ticker's own swings.
 
-The caller passes the last LOOKBACK sessions. Freshness is the last
-FRESH_SESSIONS bars of that window. This module does not call Pearson.
+The caller passes the last LOOKBACK sessions, or CUP_LOOKBACK for cup and
+handle. Freshness is the last FRESH_SESSIONS bars of that window. This module
+does not call Pearson.
 """
 
 from __future__ import annotations
@@ -14,12 +15,34 @@ from app.patterns.registry import register
 from app.patterns.windows import Window
 
 LOOKBACK = 90
+# Cup and handle is the only longer window. The cup from lip to lip spans at least CUP_MIN_SPAN sessions.
+CUP_LOOKBACK = 180
+CUP_MIN_SPAN = 90
 FRESH_SESSIONS = 10
 SWING_BARS = 5
 PAIR_TOLERANCE = 0.03
 HEAD_PROMINENCE = 0.03
 # Head component reaches 1 when the head clears the shoulder by twice the minimum.
 HEAD_SCORE_SPAN = HEAD_PROMINENCE
+# A side must rise or fall by this fraction of price. Flats use PAIR_TOLERANCE.
+MIN_MOVE = 0.03
+# Rectangle height, as a fraction of the upper price. Below this the range is too flat.
+RANGE_MIN = 0.06
+POLE_MIN = 0.08
+POLE_MAX_BARS = 36
+FLAG_RETRACE_MAX = 0.50
+FLAG_DRIFT_MIN = 0.02
+# End gap divided by start gap. Converging shapes sit at or under CONVERGE_MAX.
+CONVERGE_MAX = 0.75
+DIVERGE_MIN = 1.25
+PARALLEL_LO = 0.80
+PARALLEL_HI = 1.25
+CUP_DEPTH_MIN = 0.12
+CUP_DEPTH_MAX = 0.55
+HANDLE_DEPTH_MAX = 0.50
+ROUND_DEPTH_MIN = 0.12
+ROUND_NEAR = 0.35
+ROUND_NEAR_BARS = 8
 SCORE_FLOOR = 0.70
 HIT_CAP = 20
 
@@ -28,6 +51,24 @@ PATTERNS = (
     "double_top",
     "head_and_shoulders",
     "inverse_head_and_shoulders",
+    "triple_top",
+    "triple_bottom",
+    "bull_flag",
+    "bear_flag",
+    "bull_pennant",
+    "bear_pennant",
+    "ascending_triangle",
+    "descending_triangle",
+    "symmetrical_triangle",
+    "cup_and_handle",
+    "rectangle",
+    "rounding_bottom",
+    "rounding_top",
+    "falling_wedge",
+    "rising_wedge",
+    "broadening",
+    "ascending_channel",
+    "descending_channel",
 )
 
 PATTERN_LABELS = {
@@ -35,6 +76,24 @@ PATTERN_LABELS = {
     "double_top": "Double top",
     "head_and_shoulders": "Head and shoulders",
     "inverse_head_and_shoulders": "Inverse head and shoulders",
+    "triple_top": "Triple top",
+    "triple_bottom": "Triple bottom",
+    "bull_flag": "Bull flag",
+    "bear_flag": "Bear flag",
+    "bull_pennant": "Bull pennant",
+    "bear_pennant": "Bear pennant",
+    "ascending_triangle": "Ascending triangle",
+    "descending_triangle": "Descending triangle",
+    "symmetrical_triangle": "Symmetrical triangle",
+    "cup_and_handle": "Cup and handle",
+    "rectangle": "Rectangle",
+    "rounding_bottom": "Rounding bottom",
+    "rounding_top": "Rounding top",
+    "falling_wedge": "Falling wedge",
+    "rising_wedge": "Rising wedge",
+    "broadening": "Broadening",
+    "ascending_channel": "Ascending channel",
+    "descending_channel": "Descending channel",
 }
 
 
@@ -298,20 +357,48 @@ def _shoulders(window: Window, swings: list[Swing], *, inverse: bool) -> list[Na
     return found
 
 
+def pattern_lookback(pattern: str) -> int:
+    if pattern not in PATTERNS:
+        raise ValueError(pattern)
+    if pattern == "cup_and_handle":
+        return CUP_LOOKBACK
+    return LOOKBACK
+
+
+def _slice_window(window: Window, length: int) -> Window:
+    n = len(window.closes)
+    if length >= n:
+        return window
+    start = n - length
+    return Window(
+        closes=window.closes[start:],
+        window_start=window.dates[start],
+        window_end=window.window_end,
+        highs=window.highs[start:],
+        lows=window.lows[start:],
+        dates=window.dates[start:],
+    )
+
+
 def detect(window: Window, pattern: str) -> NamedHit | None:
     if pattern not in PATTERNS:
         raise ValueError(pattern)
-    swings = find_swings(window)
+    view = _slice_window(window, pattern_lookback(pattern))
+    swings = find_swings(view)
     if not swings:
         return None
     if pattern == "double_bottom":
-        candidates = _double_bottom(window, swings)
+        candidates = _double_bottom(view, swings)
     elif pattern == "double_top":
-        candidates = _double_top(window, swings)
+        candidates = _double_top(view, swings)
     elif pattern == "head_and_shoulders":
-        candidates = _shoulders(window, swings, inverse=False)
+        candidates = _shoulders(view, swings, inverse=False)
+    elif pattern == "inverse_head_and_shoulders":
+        candidates = _shoulders(view, swings, inverse=True)
     else:
-        candidates = _shoulders(window, swings, inverse=True)
+        from app.patterns.structures import detect_structure
+
+        candidates = detect_structure(pattern, view, swings)
     return _best(candidates)
 
 

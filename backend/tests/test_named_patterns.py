@@ -97,12 +97,14 @@ def test_constants_are_the_locked_named_pattern_defaults():
     assert HEAD_PROMINENCE == 0.03
     assert SCORE_FLOOR == 0.70
     assert HIT_CAP == 20
-    assert PATTERNS == (
+    assert PATTERNS[:4] == (
         "double_bottom",
         "double_top",
         "head_and_shoulders",
         "inverse_head_and_shoulders",
     )
+    assert len(PATTERNS) >= 20
+    assert len(set(PATTERNS)) == len(PATTERNS)
 
 
 def test_double_bottom_at_the_right_edge_matches_and_an_old_one_does_not():
@@ -325,9 +327,9 @@ def test_market_subset_does_not_walk_other_tickers(client, db, monkeypatch):
     seen: list[list[str]] = []
     from app.jobs.pattern_scan import _fetch_windows
 
-    def spy(session, as_of, tickers):
+    def spy(session, as_of, tickers, length=90):
         seen.append(list(tickers))
-        return _fetch_windows(session, as_of, tickers)
+        return _fetch_windows(session, as_of, tickers, length)
 
     monkeypatch.setattr("app.jobs.pattern_scan._fetch_windows", spy)
     sent: list[str] = []
@@ -420,12 +422,13 @@ def test_empty_selection_does_not_scan(client, db):
     assert client.post("/api/named-scans", json={"patterns": [], "scope": "all"}).status_code == 400
     assert client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "subset", "tickers": []}).status_code == 400
     assert client.post("/api/symbols/VHM/named-patterns", json={"patterns": []}).status_code == 400
-    assert client.post("/api/named-scans", json={"patterns": ["bull_flag"], "scope": "all"}).status_code == 400
+    assert client.post("/api/named-scans", json={"patterns": ["doji"], "scope": "all"}).status_code == 400
     assert db.scalars(select(ScanRun)).all() == []
     catalog = client.get("/api/pattern-catalog")
     assert catalog.status_code == 200
     assert [row["id"] for row in catalog.json()] == list(PATTERNS)
-    assert "bull_flag" not in [row["id"] for row in catalog.json()]
+    assert "doji" not in [row["id"] for row in catalog.json()]
+    assert "bull_flag" in [row["id"] for row in catalog.json()]
 
 
 def test_api_accepts_the_four_names_and_rejects_others(client):
@@ -433,10 +436,38 @@ def test_api_accepts_the_four_names_and_rejects_others(client):
         saved = client.post("/api/patterns", json={"name": pattern, "kind": "named", "pattern": pattern, "enabled": True})
         assert saved.status_code == 200
         assert saved.json()["spec"]["pattern"] == pattern
-    rejected = client.post("/api/patterns", json={"name": "Flag", "kind": "named", "pattern": "bull_flag", "enabled": True})
+    rejected = client.post("/api/patterns", json={"name": "Doji", "kind": "named", "pattern": "doji", "enabled": True})
     assert rejected.status_code == 400
     missing = client.post("/api/patterns", json={"name": "Nope", "kind": "named", "enabled": True})
     assert missing.status_code == 400
+
+
+def test_cup_and_handle_scan_loads_the_longer_window(client, db, monkeypatch):
+    from app.jobs.pattern_scan import _fetch_windows
+    from app.patterns.named import CUP_LOOKBACK, LOOKBACK
+    from tests.test_named_structures import _cup
+
+    window = _cup()
+    assert len(window.closes) == CUP_LOOKBACK
+    db.add(_symbol("VHM", name="Vinhomes"))
+    db.add_all(_ohlc("VHM", window))
+    db.commit()
+    seen: list[int] = []
+
+    def spy(session, as_of, tickers, length=LOOKBACK):
+        seen.append(length)
+        return _fetch_windows(session, as_of, tickers, length)
+
+    monkeypatch.setattr("app.jobs.pattern_scan._fetch_windows", spy)
+    cup = client.post("/api/symbols/VHM/named-patterns", json={"patterns": ["cup_and_handle"]})
+    assert cup.status_code == 200
+    match = cup.json()["matches"][0]
+    assert match["pattern"] == "cup_and_handle"
+    assert match["state"] == "forming"
+    assert seen == [CUP_LOOKBACK]
+    other = client.post("/api/symbols/VHM/named-patterns", json={"patterns": ["double_bottom"]})
+    assert other.status_code == 200
+    assert seen[-1] == LOOKBACK
 
 
 def test_double_top_and_inverse_head_and_shoulders_match():

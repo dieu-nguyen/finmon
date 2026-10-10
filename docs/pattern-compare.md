@@ -1,7 +1,7 @@
 # Pattern compare
 
 Build spec for pattern compare in `docs/product-design.md`.
-Decisions: `docs/adr/0004-hcx-bonds.md`, `docs/adr/0005-pattern-compare-job.md`, `docs/adr/0006-named-pattern-scan.md`, and `docs/adr/0007-manual-pattern-scans.md`. ADR 0005 is superseded only for the automatic-after-backfill schedule.
+Decisions: `docs/adr/0004-hcx-bonds.md`, `docs/adr/0005-pattern-compare-job.md`, `docs/adr/0006-named-pattern-scan.md`, `docs/adr/0007-manual-pattern-scans.md`, and `docs/adr/0008-named-pattern-catalog.md`. ADR 0005 is superseded only for the automatic-after-backfill schedule.
 
 Look-alike is built. Named patterns are built.
 
@@ -94,26 +94,38 @@ These four are the first build. Each name is one value of `spec.pattern` on kind
 | Head and shoulders | `head_and_shoulders` | Three highs. The middle one is clearly higher. The two shoulders are close in price. The swings are shoulder, trough, higher head, trough, shoulder. The neckline runs through the two troughs. The last swing, or the confirming close, falls in the last 10 trading sessions. |
 | Inverse head and shoulders | `inverse_head_and_shoulders` | Three lows. The middle one is clearly lower. The two shoulders are close in price. The swings are shoulder, peak, lower head, peak, shoulder. The neckline runs through the two peaks. The last swing, or the confirming close, falls in the last 10 trading sessions. |
 
-The Patterns page introduces this catalog: the shape, a schematic of the ideal form, and how to read the neckline, forming versus confirmed, and a close through the neckline. Favorites pin to the top. The score on each card is a teaching rank for how often the pattern is taught. Scan on that page runs only for the four built patterns. It starts the same manual market scan as Scans, for that one pattern on all eligible tickers. Triangles, flags, cup and handle, wedges, and rounding bottom stay on the page with Scan disabled.
+The Patterns page introduces this catalog: the shape, a schematic of the ideal form, and how to read the boundary, forming versus confirmed, and a close through that boundary. Favorites pin to the top. The score on each card is a teaching rank for how often the pattern is taught. Scan on that page is enabled for every pattern in the tables below. It starts the same manual market scan as Scans, for that one pattern on all eligible tickers.
 
-### Later names
+### Rest of the catalog
 
-Same kind. Not in the first build.
+Same kind. Same swing, freshness, floor, and cap. Decision: `docs/adr/0008-named-pattern-catalog.md`.
 
-| Pattern | `spec.pattern` | Rule |
+| Pattern | `spec.pattern` | Boundary |
 | --- | --- | --- |
-| Ascending triangle | `ascending_triangle` | Flat highs, rising lows |
-| Descending triangle | `descending_triangle` | Flat lows, falling highs |
-| Symmetrical triangle | `symmetrical_triangle` | Highs falling and lows rising |
-| Bull flag | `bull_flag` | A sharp rise, then a short downward drift |
-| Bear flag | `bear_flag` | A sharp drop, then a short upward drift |
-| Cup and handle | `cup_and_handle` | A rounded decline and recovery, then a small dip. Needs more than 90 sessions |
+| Triple top | `triple_top` | Three highs within 3%, two troughs at least 3% under them. The neckline runs through the troughs. Confirmed: a close below that line. |
+| Triple bottom | `triple_bottom` | Three lows within 3%, two peaks at least 3% above them. The neckline runs through the peaks. Confirmed: a close above that line. |
+| Bull flag | `bull_flag` | A pole that rises at least 8% in at most 36 bars, then a short downward channel that retraces at most half the pole. The two flag lines stay roughly parallel. Confirmed: a close above the upper line. |
+| Bear flag | `bear_flag` | A pole that falls at least 8%, then a short upward channel. Confirmed: a close below the lower line. |
+| Bull pennant | `bull_pennant` | The same pole as a bull flag, then a short triangle: highs fall, lows rise, and the gap narrows. Confirmed: a close above the upper line. |
+| Bear pennant | `bear_pennant` | The same pole as a bear flag, then that short triangle. Confirmed: a close below the lower line. |
+| Ascending triangle | `ascending_triangle` | Two highs within 3%. Two lows, the later at least 3% higher. The gap narrows to at most 75% of the start. Confirmed: a close above the flat highs. |
+| Descending triangle | `descending_triangle` | Two lows within 3%. Two highs, the later at least 3% lower. The gap narrows the same way. Confirmed: a close below the flat lows. |
+| Symmetrical triangle | `symmetrical_triangle` | Highs fall and lows rise, each by at least 3%, and the gap narrows. Confirmed: a close outside either line. |
+| Cup and handle | `cup_and_handle` | See the lookback below. A rounded cup at least 12% deep, lips within 3%, then a handle in the upper half that is no deeper than half the cup. Confirmed: a close above the lip. |
+| Rectangle | `rectangle` | Two highs within 3% and two lows within 3%, at least 6% apart, lines roughly parallel. Confirmed: a close outside either line. |
+| Rounding bottom | `rounding_bottom` | One swing low in the middle of a wide U, at least 12% under the left lip, with the right side recovering most of the way and no second test of the low. Confirmed: a close above the left lip. |
+| Rounding top | `rounding_top` | The dome. Confirmed: a close below the left lip. |
+| Falling wedge | `falling_wedge` | Highs and lows both fall, and the gap narrows to at most 75%. Confirmed: a close above the upper line. |
+| Rising wedge | `rising_wedge` | Highs and lows both rise, and the gap narrows. Confirmed: a close below the lower line. |
+| Broadening | `broadening` | Highs rise and lows fall, and the gap widens to at least 125% of the start. Confirmed: a close outside either line. |
+| Ascending channel | `ascending_channel` | Highs and lows both rise, and the gap stays between 80% and 125% of the start. Confirmed: a close above the upper line. |
+| Descending channel | `descending_channel` | Highs and lows both fall, parallel in that same band. Confirmed: a close below the lower line. |
 
-Cup and handle uses a longer window than the first four. That length is still open.
+`CUP_LOOKBACK` is 180 sessions. That is the only lookback longer than 90. `CUP_MIN_SPAN` is 90: the left lip and the right lip are at least 90 sessions apart. A cup drawn inside the standard 90 does not match. When the selected patterns include cup and handle, the run loads up to 180 sessions. Every other pattern still scores the last 90 of that load. A name with fewer than 180 sessions stays eligible for the other patterns and is not a cup hit.
 
 ### Freshness
 
-The 90 sessions are how far back the detector may look for the swings of the current pattern. They are not a search through every stretch inside those 90 sessions. Freshness is a separate count.
+The 90 sessions are how far back the detector may look for the swings of the current pattern. They are not a search through every stretch inside those 90 sessions. Cup and handle looks back `CUP_LOOKBACK` (180) sessions instead, and the cup from lip to lip spans at least 90. Freshness is a separate count and is the same for every pattern.
 
 The right edge is the last 10 trading sessions, about two calendar weeks. The last swing of a forming pattern falls in those 10 sessions. The confirming close of a confirmed pattern falls in those 10 sessions. The market scan and the one-ticker check use this same rule.
 
@@ -142,7 +154,7 @@ The market scan keeps at most 20 hits for each selected pattern, highest score f
 You pick one or more names from the catalog, then press Scan. The catalog is the shared list in section 4, not a separate set of buttons. For that run the market scan:
 
 1. Walk the ticker scope. The default is every listed stock and ETF on HOSE, HNX, and UPCOM that has enough daily bars. Stored UPX counts as UPCOM. You can switch to a subset and pick those tickers. Names outside the subset are not loaded. Skip bonds, HCX, indices, and futures (`type=futures`).
-2. Read the last 90 sessions of daily high, low, and close. Closes alone are not enough. Those 90 sessions are the lookback for the current pattern. Freshness is the last 10 trading sessions. The price band is 3%. The swing width is five bars.
+2. Read the last 90 sessions of daily high, low, and close. Closes alone are not enough. Those 90 sessions are the lookback for the current pattern. Cup and handle reads the last 180 (`CUP_LOOKBACK`). Freshness is the last 10 trading sessions. The price band is 3%. The swing width is five bars. A side that must rise or fall moves at least 3%.
 3. Mark swing highs and swing lows with the five-bar rule in Locked numbers, including the shorter right side at the edge of the window.
 4. Test the last swings against each selected pattern's rule. A double bottom is low, rally, low. Head and shoulders is five swings: shoulder, trough, higher head, trough, shoulder. Each pattern has its own rule in the tables above. A name that does not have those swings is not a hit. A pattern whose last swing, or whose confirming close, falls outside the last 10 trading sessions is not a hit.
 5. Score the fit from 0 to 1, as in Locked numbers. Even tops or bottoms score higher. A head that barely sticks out scores lower. Keep hits at or above 0.70. The market scan stores at most 20, highest score first.
@@ -160,7 +172,7 @@ Built.
 
 The market scan is the patterns you selected across the ticker scope. From a ticker, you ask the other way: which of the selected patterns that ticker has.
 
-Opening the ticker does not score. The one-ticker control is the Scan tab of the side panel, after Company, Note, and Alert. It is not above the chart. The tab shows the last stored check for that ticker, or an empty state when there is none. Opening the tab does not score. Scan reads that ticker's last 90 sessions of high, low, and close, through the official bar on the as-of date. It tests only the patterns you selected, with the 10-session freshness rule. It stores the run and returns each match with the pattern name, forming or confirmed, the score, and the swing dates and prices. The daily price pane draws the selected match: swing points and the neckline, anchored to date and price. The highest score is selected by default. A symbol opened from a market-scan hit keeps that hit's marks until you select another result on the Scan tab. Changing indicators, pan, and zoom keeps the marks. Drawings you made stay. No match removes only the pattern marks. A later open reads those stored rows and does not score again.
+Opening the ticker does not score. The one-ticker control is the Scan tab of the side panel, after Company, Note, and Alert. It is not above the chart. The tab shows the last stored check for that ticker, or an empty state when there is none. Opening the tab does not score. Scan reads that ticker's last 90 sessions of high, low, and close, or the last 180 when cup and handle is selected, through the official bar on the as-of date. It tests only the patterns you selected, with the 10-session freshness rule. It stores the run and returns each match with the pattern name, forming or confirmed, the score, and the swing dates and prices. The daily price pane draws the selected match: swing points and the neckline, anchored to date and price. The highest score is selected by default. A symbol opened from a market-scan hit keeps that hit's marks until you select another result on the Scan tab. Changing indicators, pan, and zoom keeps the marks. Drawings you made stay. No match removes only the pattern marks. A later open reads those stored rows and does not score again.
 
 The check and the market scan call the same match rule. A stretch that matches in one view matches in the other when that pattern was selected. A pattern from the previous week matches in both. A stretch that sits only from T-60 to T-30 matches in neither.
 
@@ -168,10 +180,7 @@ The check does not walk other tickers. It does not call Pearson. It does not sen
 
 ### Still open
 
-Look-alike's floor 0.85 and top 20 are not this method's floor or cap. The first four read the last 90 sessions as lookback. Freshness is the last 10 trading sessions. The price band, the five-bar swing, the 0.70 floor, and the cap of 20 are locked above.
-
-- The cup-and-handle window. It needs more than 90 sessions, and it is not in the first build.
-- Confirmation for the later names. Forming and confirmed above apply to the first four, which have a neckline.
+Look-alike's floor 0.85 and top 20 are not this method's floor or cap. Named patterns read the last 90 sessions as lookback, except cup and handle, which reads 180. Freshness is the last 10 trading sessions. The price band, the five-bar swing, the 0.70 floor, and the cap of 20 are locked above. Forming and confirmed apply to every pattern in the catalog. Each pattern's confirming close is the boundary in the table above.
 
 Look-alike spec fields (`reference`, `min_score`, `top_k`) are not fields on kind `named`.
 
@@ -303,11 +312,11 @@ Shared columns stay on the one hit table. Do not invent a second hit table.
 
 ## 9. Later methods
 
-These are extension points. Rule, shape, other similarity, and the weekly schedule are not in the current build. Further named patterns plug into kind `named` (section 4) and are not in the first named-pattern build.
+These are extension points. Rule, shape, other similarity, and the weekly schedule are not in the current build. The named-pattern catalog in section 4 is built. Another structure pattern would be a new `spec.pattern` on kind `named`, with the same swing and freshness. A candlestick pattern is not part of this catalog.
 
 | Later | What it plugs into |
 | --- | --- |
-| More named patterns | Same kind `named`, new `spec.pattern` values. Ascending triangle, descending triangle, symmetrical triangle, bull flag, bear flag, cup and handle. Section 4 |
+| Another named pattern | Same kind `named`, a new `spec.pattern` value, same swing, freshness, floor, and cap. Section 4 |
 | Rule | `kind=rule`. Spec is an AND of clauses. The method computes close, SMA, ATR, and volume average from the window it was given. No stored indicator series. A hit stores score 1. No match returns no row |
 | Shape | `kind=shape`. Spec is a template of length ≤ 90 — a drawn polyline, or a historical range such as HPG between two dates — and a minimum score. Same normalize-and-score slot, different spec |
 | Other similarity | z-score, and 1 − cosine, as spec fields on a future method. Look-alike's spec does not offer them |

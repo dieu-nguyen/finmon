@@ -5,9 +5,11 @@
  * earlier and more often in standard technical-analysis references. There is
  * no credible public dataset of broker usage, so this is not a usage share.
  * Order: double bottom 100, double top 96, head and shoulders 92, inverse
- * head and shoulders 88, bull flag 80, bear flag 76, ascending triangle 72,
- * descending triangle 68, symmetrical triangle 64, cup and handle 58, then
- * rounding bottom 50, falling wedge 46, rising wedge 42.
+ * head and shoulders 88, triple top 86, triple bottom 82, bull flag 80,
+ * bear flag 76, bull pennant 74, ascending triangle 72, bear pennant 70,
+ * descending triangle 68, symmetrical triangle 64, cup and handle 58,
+ * rectangle 54, rounding bottom 50, rounding top 48, falling wedge 46,
+ * rising wedge 42, broadening 40, ascending channel 36, descending channel 32.
  */
 export type Point = { x: number; y: number };
 
@@ -32,12 +34,30 @@ export type PatternGuide = {
   schematic: PatternSchematic;
 };
 
-/** Detectors that exist. Everything else stays on the page with Scan disabled. */
+/** Detectors that exist. A listed pattern with no detector keeps Scan disabled. */
 export const BUILT_SCAN_IDS = [
   "double_bottom",
   "double_top",
   "head_and_shoulders",
   "inverse_head_and_shoulders",
+  "triple_top",
+  "triple_bottom",
+  "bull_flag",
+  "bear_flag",
+  "bull_pennant",
+  "bear_pennant",
+  "ascending_triangle",
+  "descending_triangle",
+  "symmetrical_triangle",
+  "cup_and_handle",
+  "rectangle",
+  "rounding_bottom",
+  "rounding_top",
+  "falling_wedge",
+  "rising_wedge",
+  "broadening",
+  "ascending_channel",
+  "descending_channel",
 ] as const;
 
 const SCAN_IDS = new Set<string>(BUILT_SCAN_IDS);
@@ -150,6 +170,58 @@ export const PATTERN_GUIDE: PatternGuide[] = [
     },
   }),
   guide({
+    id: "triple_top",
+    name: "Triple top",
+    rank: 86,
+    shape: "Three highs at nearly the same price, with two declines between them.",
+    reading:
+      "The neckline runs through the two troughs. Forming means the third high is in place and price has not closed through that line. A close through the neckline means the bar finished below it. Wait for that close before treating the range as finished.",
+    schematic: {
+      path: [
+        { x: 0, y: 48 },
+        { x: 12, y: 78 },
+        { x: 28, y: 36 },
+        { x: 44, y: 80 },
+        { x: 60, y: 34 },
+        { x: 76, y: 78 },
+        { x: 100, y: 16 },
+      ],
+      guides: [
+        [
+          { x: 28, y: 36 },
+          { x: 60, y: 34 },
+          { x: 96, y: 32 },
+        ],
+      ],
+    },
+  }),
+  guide({
+    id: "triple_bottom",
+    name: "Triple bottom",
+    rank: 82,
+    shape: "Three lows at nearly the same price, with two rallies between them.",
+    reading:
+      "The neckline runs through the two peaks. Forming means the third low is in place and price has not closed through that line. A close through the neckline means the bar finished above it. Wait for that close before treating the range as finished.",
+    schematic: {
+      path: [
+        { x: 0, y: 52 },
+        { x: 12, y: 22 },
+        { x: 28, y: 64 },
+        { x: 44, y: 18 },
+        { x: 60, y: 66 },
+        { x: 76, y: 20 },
+        { x: 100, y: 86 },
+      ],
+      guides: [
+        [
+          { x: 28, y: 64 },
+          { x: 60, y: 66 },
+          { x: 96, y: 68 },
+        ],
+      ],
+    },
+  }),
+  guide({
     id: "bull_flag",
     name: "Bull flag",
     rank: 80,
@@ -208,6 +280,37 @@ export const PATTERN_GUIDE: PatternGuide[] = [
     },
   }),
   guide({
+    id: "bull_pennant",
+    name: "Bull pennant",
+    rank: 74,
+    shape: "A sharp rise, then a short triangle whose highs fall and whose lows rise.",
+    reading:
+      "The pole is the sharp rise. The pennant is the small triangle after it. Forming means price is still inside those two converging lines. A close through the upper line means the bar finished above the pennant.",
+    schematic: {
+      path: [
+        { x: 0, y: 10 },
+        { x: 28, y: 84 },
+        { x: 42, y: 58 },
+        { x: 56, y: 74 },
+        { x: 70, y: 62 },
+        { x: 84, y: 70 },
+        { x: 100, y: 92 },
+      ],
+      guides: [
+        [
+          { x: 28, y: 84 },
+          { x: 56, y: 74 },
+          { x: 84, y: 70 },
+        ],
+        [
+          { x: 42, y: 58 },
+          { x: 70, y: 62 },
+          { x: 96, y: 66 },
+        ],
+      ],
+    },
+  }),
+  guide({
     id: "ascending_triangle",
     name: "Ascending triangle",
     rank: 72,
@@ -233,6 +336,37 @@ export const PATTERN_GUIDE: PatternGuide[] = [
           { x: 0, y: 24 },
           { x: 36, y: 38 },
           { x: 72, y: 48 },
+        ],
+      ],
+    },
+  }),
+  guide({
+    id: "bear_pennant",
+    name: "Bear pennant",
+    rank: 70,
+    shape: "A sharp drop, then a short triangle whose highs fall and whose lows rise.",
+    reading:
+      "The pole is the sharp drop. The pennant is the small triangle after it. Forming means price is still inside those two converging lines. A close through the lower line means the bar finished below the pennant.",
+    schematic: {
+      path: [
+        { x: 0, y: 90 },
+        { x: 28, y: 16 },
+        { x: 42, y: 42 },
+        { x: 56, y: 26 },
+        { x: 70, y: 38 },
+        { x: 84, y: 30 },
+        { x: 100, y: 8 },
+      ],
+      guides: [
+        [
+          { x: 42, y: 42 },
+          { x: 70, y: 38 },
+          { x: 96, y: 34 },
+        ],
+        [
+          { x: 28, y: 16 },
+          { x: 56, y: 26 },
+          { x: 84, y: 30 },
         ],
       ],
     },
@@ -304,7 +438,7 @@ export const PATTERN_GUIDE: PatternGuide[] = [
     rank: 58,
     shape: "A rounded decline and recovery, then a small dip near the prior high.",
     reading:
-      "The lip of the cup, along the prior high, is the line to watch. Forming means the handle is still a dip and price has not closed through that lip. A close through the lip means the bar finished above it. The round needs a longer window than the first four patterns.",
+      "The lip of the cup, along the prior high, is the line to watch. Forming means the handle is still a small dip and price has not closed through that lip. A close through the lip means the bar finished above it. The scan reads 180 sessions, and the cup from lip to lip spans at least 90.",
     schematic: {
       path: [
         { x: 0, y: 74 },
@@ -331,6 +465,35 @@ export const PATTERN_GUIDE: PatternGuide[] = [
         { x: 86, y: 74 },
         { x: 92, y: 60 },
         { x: 100, y: 86 },
+      ],
+    },
+  }),
+  guide({
+    id: "rectangle",
+    name: "Rectangle",
+    rank: 54,
+    shape: "Highs that stall near one price and lows that stall near a lower price.",
+    reading:
+      "The top and bottom of the range are the two boundaries. Forming means price is still inside the box. A close through either line means the bar finished outside the range. A range that is only a few percent tall is too flat to count.",
+    schematic: {
+      path: [
+        { x: 0, y: 28 },
+        { x: 16, y: 72 },
+        { x: 34, y: 30 },
+        { x: 52, y: 70 },
+        { x: 70, y: 28 },
+        { x: 88, y: 72 },
+        { x: 100, y: 88 },
+      ],
+      guides: [
+        [
+          { x: 16, y: 72 },
+          { x: 88, y: 72 },
+        ],
+        [
+          { x: 0, y: 28 },
+          { x: 70, y: 28 },
+        ],
       ],
     },
   }),
@@ -362,6 +525,37 @@ export const PATTERN_GUIDE: PatternGuide[] = [
         { x: 0, y: 68 },
         { x: 50, y: 16 },
         { x: 100, y: 82 },
+      ],
+    },
+  }),
+  guide({
+    id: "rounding_top",
+    name: "Rounding top",
+    rank: 48,
+    shape: "A slow rounded rise that turns into a slow decline, a wide dome.",
+    reading:
+      "The left lip of the dome is the line to watch. Forming means the decline has not closed through that lip. A close through it means the bar finished below the left side of the dome. A single spike is too sharp to count.",
+    schematic: {
+      path: [
+        { x: 0, y: 32 },
+        { x: 16, y: 48 },
+        { x: 32, y: 68 },
+        { x: 50, y: 84 },
+        { x: 68, y: 68 },
+        { x: 84, y: 46 },
+        { x: 100, y: 18 },
+      ],
+      guides: [
+        [
+          { x: 0, y: 32 },
+          { x: 84, y: 32 },
+        ],
+      ],
+      smooth: true,
+      marks: [
+        { x: 0, y: 32 },
+        { x: 50, y: 84 },
+        { x: 100, y: 18 },
       ],
     },
   }),
@@ -423,6 +617,99 @@ export const PATTERN_GUIDE: PatternGuide[] = [
           { x: 0, y: 16 },
           { x: 36, y: 36 },
           { x: 70, y: 54 },
+        ],
+      ],
+    },
+  }),
+  guide({
+    id: "broadening",
+    name: "Broadening",
+    rank: 40,
+    shape: "Highs that rise and lows that fall, so the range gets wider. A megaphone.",
+    reading:
+      "The upper and lower lines slope apart. Forming means price is still inside them. A close through either line means the bar finished outside the megaphone. Higher highs with flat lows are not this shape.",
+    schematic: {
+      path: [
+        { x: 0, y: 42 },
+        { x: 16, y: 62 },
+        { x: 34, y: 34 },
+        { x: 52, y: 74 },
+        { x: 70, y: 24 },
+        { x: 88, y: 86 },
+        { x: 100, y: 12 },
+      ],
+      guides: [
+        [
+          { x: 16, y: 62 },
+          { x: 52, y: 74 },
+          { x: 88, y: 86 },
+        ],
+        [
+          { x: 0, y: 42 },
+          { x: 34, y: 34 },
+          { x: 70, y: 24 },
+        ],
+      ],
+    },
+  }),
+  guide({
+    id: "ascending_channel",
+    name: "Ascending channel",
+    rank: 36,
+    shape: "Highs and lows that both rise, with the two lines staying about parallel.",
+    reading:
+      "The upper and lower lines bound the channel. Forming means price is still inside them. A close through the upper line means the bar finished above the channel. When the lines converge, the shape is a rising wedge instead.",
+    schematic: {
+      path: [
+        { x: 0, y: 18 },
+        { x: 18, y: 46 },
+        { x: 36, y: 32 },
+        { x: 54, y: 60 },
+        { x: 72, y: 46 },
+        { x: 90, y: 74 },
+        { x: 100, y: 88 },
+      ],
+      guides: [
+        [
+          { x: 18, y: 46 },
+          { x: 54, y: 60 },
+          { x: 90, y: 74 },
+        ],
+        [
+          { x: 0, y: 18 },
+          { x: 36, y: 32 },
+          { x: 72, y: 46 },
+        ],
+      ],
+    },
+  }),
+  guide({
+    id: "descending_channel",
+    name: "Descending channel",
+    rank: 32,
+    shape: "Highs and lows that both fall, with the two lines staying about parallel.",
+    reading:
+      "The upper and lower lines bound the channel. Forming means price is still inside them. A close through the lower line means the bar finished below the channel. When the lines converge, the shape is a falling wedge instead.",
+    schematic: {
+      path: [
+        { x: 0, y: 82 },
+        { x: 18, y: 54 },
+        { x: 36, y: 68 },
+        { x: 54, y: 40 },
+        { x: 72, y: 54 },
+        { x: 90, y: 26 },
+        { x: 100, y: 12 },
+      ],
+      guides: [
+        [
+          { x: 0, y: 82 },
+          { x: 36, y: 68 },
+          { x: 72, y: 54 },
+        ],
+        [
+          { x: 18, y: 54 },
+          { x: 54, y: 40 },
+          { x: 90, y: 26 },
         ],
       ],
     },
