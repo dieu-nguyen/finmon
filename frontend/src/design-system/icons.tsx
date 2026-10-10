@@ -1,4 +1,4 @@
-export function NavIcon({ name }: { name: "market" | "alerts" | "scans" }) {
+export function NavIcon({ name }: { name: "market" | "alerts" | "patterns" | "scans" }) {
   const common = {
     width: 18,
     height: 18,
@@ -23,6 +23,13 @@ export function NavIcon({ name }: { name: "market" | "alerts" | "scans" }) {
       <svg {...common}>
         <path d="M4.5 7.5a4.5 4.5 0 0 1 9 0c0 3.2.8 4.2 1.2 4.7H3.3c.4-.5 1.2-1.5 1.2-4.7z" />
         <path d="M7.2 13.2a1.8 1.8 0 0 0 3.6 0" />
+      </svg>
+    );
+  }
+  if (name === "patterns") {
+    return (
+      <svg {...common}>
+        <path d="M1.8 12.2 5 7.2 8.2 11 11.6 4.2 14.4 8.6 16.2 6.4" />
       </svg>
     );
   }
