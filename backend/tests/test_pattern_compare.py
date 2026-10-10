@@ -254,33 +254,41 @@ def test_messages_are_one_line_when_nothing_matches():
     assert "was not compared" in skipped
 
 
-def test_weekday_before_close_does_not_scan(db, monkeypatch):
-    seen: list[date] = []
-    monkeypatch.setattr("app.jobs.backfill.run_pattern_scan", lambda *_a, **_k: seen.append(AS_OF))
+def test_weekday_before_close_does_not_scan(db):
     feed = Feed(["VCB"])
     feed.bars["VCB"] = [date(2026, 9, 25)]
     now = datetime(2026, 9, 28, 10, 0, tzinfo=ICT)
     assert allows_official_bar(now) is False
     assert run_once(db, _settings(), feed.client(), now=now) == 0
-    assert seen == []
+    assert db.scalars(select(ScanRun)).all() == []
 
 
-def test_after_close_and_weekend_scan(db, monkeypatch):
-    seen: list[date] = []
-    monkeypatch.setattr("app.jobs.backfill.run_pattern_scan", lambda _db, as_of, _settings: seen.append(as_of))
+def test_after_close_and_weekend_do_not_scan(db):
+    db.add(
+        PatternDef(
+            name="Like VCB",
+            kind="lookalike",
+            spec={"reference": "VCB", "min_score": 0.85, "top_k": 20},
+            schedule="daily",
+            enabled=True,
+        )
+    )
+    db.commit()
     feed = Feed(["VCB"])
     feed.bars["VCB"] = [date(2026, 9, 25), date(2026, 9, 28)]
     assert run_once(db, _settings(), feed.client(), now=datetime(2026, 9, 28, 16, 30, tzinfo=ICT)) == 0
-    assert seen == [date(2026, 9, 28)]
     weekend = datetime(2026, 9, 26, 12, 0, tzinfo=ICT)
     assert allows_official_bar(weekend) is True
     assert run_once(db, _settings(), feed.client(), now=weekend) == 0
-    assert seen[-1] == date(2026, 9, 25)
+    assert db.scalars(select(ScanRun)).all() == []
+    backfill = (ROOT / "app/jobs/backfill.py").read_text()
+    assert "pattern_scan" not in backfill
+    assert "run_pattern_scan" not in backfill
+    quotes = (ROOT / "app/main.py").read_text().split("def _run_quotes", 1)[1].split("\ndef ", 1)[0]
+    assert "pattern_scan" not in quotes
 
 
-def test_early_exits_do_not_scan(db, engine, monkeypatch):
-    seen: list[int] = []
-    monkeypatch.setattr("app.jobs.backfill.run_pattern_scan", lambda *_a, **_k: seen.append(1))
+def test_early_exits_do_not_scan(db, engine):
     assert run_once(db, Settings(dnse_api_key="", dnse_api_secret=""), now=datetime(2026, 9, 28, 16, 30, tzinfo=ICT)) == EXIT_FATAL
     other = engine.connect()
     other.execute(text("SELECT GET_LOCK('finmon_backfill', 0)"))
@@ -296,4 +304,64 @@ def test_early_exits_do_not_scan(db, engine, monkeypatch):
 
     client = DnseClient(_settings(), transport=httpx.MockTransport(handler))
     assert run_once(db, _settings(), client, now=datetime(2026, 9, 28, 16, 30, tzinfo=ICT)) == EXIT_FATAL
-    assert seen == []
+    assert db.scalars(select(ScanRun)).all() == []
+
+
+def test_scan_press_scores_one_lookalike(client, db, monkeypatch):
+    up = _rising()
+    db.add_all([_symbol("REF", name="Reference"), _symbol("TWIN", name="Twin"), _symbol("OTHER")])
+    db.add_all(_bars("REF", up))
+    db.add_all(_bars("TWIN", up))
+    db.add_all(_bars("OTHER", list(reversed(up))))
+    db.commit()
+    first = client.post(
+        "/api/patterns",
+        json={"name": "Like REF", "reference": "REF", "min_score": 0.85, "top_k": 20, "enabled": True},
+    )
+    second = client.post(
+        "/api/patterns",
+        json={"name": "Like OTHER", "reference": "OTHER", "min_score": 0.85, "top_k": 20, "enabled": True},
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    saved = first.json()
+    sent: list[str] = []
+    monkeypatch.setattr(TelegramSender, "send", lambda self, text: sent.append(text) or True)
+    scanned = client.post(f"/api/patterns/{saved['id']}/scan")
+    assert scanned.status_code == 200
+    body = scanned.json()
+    assert [row["ticker"] for row in body["hits"]] == ["TWIN"]
+    assert "REF" not in [row["ticker"] for row in body["hits"]]
+    assert body["reference_compared"] is True
+    assert len(sent) == 1
+    assert "Like REF" in sent[0] and "TWIN" in sent[0]
+    runs = list(db.scalars(select(ScanRun)).all())
+    assert len(runs) == 1
+    assert runs[0].pattern_id == saved["id"]
+    assert runs[0].status == "ok"
+
+    def boom(_spec, _windows):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.jobs.pattern_scan.method_for", lambda _kind: boom)
+    failed = client.post(f"/api/patterns/{saved['id']}/scan")
+    assert failed.status_code == 500
+    again = client.get(f"/api/patterns/{saved['id']}/hits").json()
+    assert [row["ticker"] for row in again["hits"]] == ["TWIN"]
+    assert len(sent) == 1
+    assert client.post(f"/api/patterns/{second.json()['id']}/scan").status_code == 500
+
+    off = client.put(
+        f"/api/patterns/{saved['id']}",
+        json={"name": "Like REF", "reference": "REF", "min_score": 0.85, "top_k": 20, "enabled": False},
+    )
+    assert off.status_code == 200
+    assert client.post(f"/api/patterns/{saved['id']}/scan").status_code == 400
+    other = db.get(PatternDef, second.json()["id"])
+    assert other is not None
+    other.spec = {"reference": " ", "min_score": 0.85, "top_k": 20}
+    db.commit()
+    assert client.post(f"/api/patterns/{other.id}/scan").status_code == 400
+    named = client.post("/api/patterns", json={"name": "Bottoms", "kind": "named", "pattern": "double_bottom", "enabled": True})
+    assert named.status_code == 200
+    assert client.post(f"/api/patterns/{named.json()['id']}/scan").status_code == 404

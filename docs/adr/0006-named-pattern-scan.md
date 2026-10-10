@@ -3,6 +3,8 @@
 Status: accepted
 Date: 2026-10-04
 
+The sentence below that the backfill hook still runs look-alike is superseded by `docs/adr/0007-manual-pattern-scans.md`. Named patterns stay a separate scan kind, and they stay manual.
+
 ## Context
 
 Look-alike scores the last 90 closes against a reference ticker with Pearson. Double bottom, double top, head and shoulders, and inverse head and shoulders are rules on one ticker's own swings. A reference correlation does not detect them.

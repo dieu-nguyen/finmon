@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SymbolPage } from "./Symbol";
@@ -65,9 +65,13 @@ describe("Symbol side panel", () => {
     expect(screen.getByText("Revenue").closest(".rail")).not.toBeNull();
     expect(screen.getByTestId("daily-chart").closest(".chart-frame")).not.toBeNull();
 
-    const tabs = screen.getAllByRole("button").filter((button) => ["Company", "Note", "Alert"].includes(button.textContent ?? ""));
-    expect(tabs.map((button) => button.textContent)).toEqual(["Company", "Note", "Alert"]);
+    const tabs = screen.getAllByRole("button").filter((button) => ["Company", "Note", "Alert", "Scan"].includes(button.textContent ?? ""));
+    expect(tabs.map((button) => button.textContent)).toEqual(["Company", "Note", "Alert", "Scan"]);
+    expect(tabs[0]).toHaveTextContent("Company");
+    expect(tabs[0]).not.toHaveTextContent("Scan");
+    expect(tabs[tabs.length - 1]).toHaveTextContent("Scan");
     expect(tabs[0]).toHaveStyle({ fontWeight: "600" });
+    expect(screen.queryByRole("combobox", { name: "Patterns" })).not.toBeInTheDocument();
     expect(urls.some((url) => url.endsWith("/company"))).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Note" }));
@@ -78,5 +82,11 @@ describe("Symbol side panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Alert" }));
     expect(screen.getByRole("button", { name: "Add alert" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Note")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+    const scan = within(document.querySelector(".rail-body") as HTMLElement);
+    expect(scan.getByRole("combobox", { name: "Patterns" }).closest(".rail")).not.toBeNull();
+    expect(scan.getByRole("combobox", { name: "Patterns" }).closest(".chart-frame")).toBeNull();
+    expect(document.querySelector(".symbol-page > .scan-bar")).toBeNull();
   });
 });

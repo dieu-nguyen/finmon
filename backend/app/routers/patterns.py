@@ -4,7 +4,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.jobs.pattern_scan import NamedScanFailed, latest_named_run, trigger_named_market, trigger_named_ticker
+from app.jobs.pattern_scan import (
+    LookalikeScanFailed,
+    NamedScanFailed,
+    latest_named_run,
+    trigger_lookalike,
+    trigger_named_market,
+    trigger_named_ticker,
+)
 from app.models import PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns.named import PATTERN_LABELS, PATTERNS
 from app.schemas import (
@@ -143,6 +150,22 @@ def pattern_hits(pattern_id: int, db: Session = Depends(get_db)) -> HitsOut:
             for hit in hits
         ],
     )
+
+
+@router.post("/patterns/{pattern_id}/scan", response_model=HitsOut)
+def scan_lookalike(pattern_id: int, db: Session = Depends(get_db)) -> HitsOut:
+    pattern = db.get(PatternDef, pattern_id)
+    if pattern is None or pattern.kind != "lookalike":
+        raise HTTPException(404, "unknown pattern")
+    if not pattern.enabled:
+        raise HTTPException(400, "pattern is disabled")
+    if not str((pattern.spec or {}).get("reference") or "").strip():
+        raise HTTPException(400, "reference is required")
+    try:
+        trigger_lookalike(db, pattern.id, get_settings())
+    except LookalikeScanFailed:
+        raise HTTPException(500, "scan failed") from None
+    return pattern_hits(pattern_id, db)
 
 
 def _chosen_patterns(names: list[str]) -> list[str]:

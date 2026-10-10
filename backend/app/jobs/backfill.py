@@ -14,7 +14,6 @@ from app.clients.dnse import DnseClient, OhlcvBar
 from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.jobs.ingest import upsert_instrument
-from app.jobs.pattern_scan import run_pattern_scan
 from app.jobs.rate_limit import BackfillInterrupted, RateLimiter
 from app.models import BarSync, DailyBar, Symbol
 
@@ -374,11 +373,6 @@ def run_once(
         errors = sum(1 for row in tracked if row.status == "error")
         skipped = sum(1 for row in tracked if row.status == "skipped")
         print(f"completed={completed} partial={partial} error={errors} skipped={skipped}")
-        if allows_official_bar(local_now):
-            try:
-                run_pattern_scan(db, target, settings)
-            except Exception as exc:
-                print(f"pattern scan error: {exc}")
         return EXIT_OK
     except BackfillInterrupted:
         print(f"stopped at {current}" if current else "stopped")

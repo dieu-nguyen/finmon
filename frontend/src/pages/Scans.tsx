@@ -53,8 +53,20 @@ export function Scans() {
   const [tickerQuery, setTickerQuery] = useState("");
   const [tickerOptions, setTickerOptions] = useState<PatternCatalogItem[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [lookScanning, setLookScanning] = useState(false);
 
   const lookalikes = patterns.filter((row) => row.kind !== "named");
+  const chosen = lookalikes.find((row) => row.id === selected) ?? null;
+  const savedReference = String(chosen?.spec.reference ?? "").trim().toUpperCase();
+  const formMatchesSaved =
+    chosen != null &&
+    form.name.trim() === chosen.name &&
+    form.enabled === chosen.enabled &&
+    form.reference.trim().toUpperCase() === savedReference &&
+    savedReference.length > 0 &&
+    Number(form.minScore) === Number(chosen.spec.min_score ?? 0.85) &&
+    Number(form.topK) === Number(chosen.spec.top_k ?? 20);
+  const lookScanDisabled = !formMatchesSaved || !form.enabled || lookScanning;
 
   const loadPatterns = async (prefer?: number) => {
     const rows = await api.patterns();
@@ -285,6 +297,7 @@ export function Scans() {
           </Table>
         ) : null}
       </section>
+      <section aria-label="Look-alike">
       <h2 className="section-label">Look-alike</h2>
       {lookalikes.length === 0 ? <EmptyState text="No patterns yet" /> : null}
       <div className="chips">
@@ -362,6 +375,25 @@ export function Scans() {
           </label>
           <div className="form-actions">
             <Button type="submit">Save</Button>
+            <Button
+              type="button"
+              disabled={lookScanDisabled}
+              onClick={() => {
+                if (lookScanDisabled || selected == null) return;
+                setLookScanning(true);
+                setErr(null);
+                api
+                  .scanLookalike(selected)
+                  .then((body) => {
+                    setHits(body);
+                    setErr(null);
+                  })
+                  .catch(() => setErr("Scan failed"))
+                  .finally(() => setLookScanning(false));
+              }}
+            >
+              {lookScanning ? "Scanning" : "Scan"}
+            </Button>
           </div>
         </div>
         {refHits.length > 0 ? (
@@ -433,6 +465,7 @@ export function Scans() {
           ) : null}
         </div>
       ) : null}
+      </section>
     </div>
   );
 }

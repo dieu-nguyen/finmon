@@ -1,7 +1,7 @@
 # Pattern compare
 
 Build spec for pattern compare in `docs/product-design.md`.
-Decisions: `docs/adr/0004-hcx-bonds.md`, `docs/adr/0005-pattern-compare-job.md`, and `docs/adr/0006-named-pattern-scan.md`.
+Decisions: `docs/adr/0004-hcx-bonds.md`, `docs/adr/0005-pattern-compare-job.md`, `docs/adr/0006-named-pattern-scan.md`, and `docs/adr/0007-manual-pattern-scans.md`. ADR 0005 is superseded only for the automatic-after-backfill schedule.
 
 Look-alike is built. Named patterns are built.
 
@@ -17,9 +17,9 @@ It also supersedes three product-design sentences that would build this slice wr
 
 ## 1. Why
 
-The page opens a stored list. The arithmetic is about 3,000 names × 90 closes. The job exists so that list is ready when the screen opens, and so the last bar is the official `dnse` bar.
+The page opens a stored list. The arithmetic is about 3,000 names × 90 closes. That work runs when you press Scan, so the screen does not walk the catalog, and the last bar scored is an official `dnse` bar.
 
-A `source=quote` bar is built from sampled last prices. A `source=dnse` bar is the exchange OHLC. `docs/backfill-workflow.md` keeps those writers apart, and it removes the 16:30 history job from the API process. The look-alike scan runs after the backfill pass that is allowed to write today's official bar. A named-pattern scan runs only when you trigger it.
+A `source=quote` bar is built from sampled last prices. A `source=dnse` bar is the exchange OHLC. `docs/backfill-workflow.md` keeps those writers apart, and it removes the 16:30 history job from the API process. Look-alike and named-pattern scans both run only when you trigger them. Neither runs after backfill.
 
 HCX is stored as stock. Section 2 moves those names to `type=bond`. Look-alike does not include them. A named-pattern scan skips them too.
 
@@ -43,7 +43,7 @@ Stocks | Funds | Indices stay the market segments. The Stocks board control is A
 
 Built. The numbers in this section are locked.
 
-A match uses the last 90 trading days of closes: 90 `daily_bar` rows, not 90 calendar days. `window_end` is the as-of date (the backfill target date for this run). `window_start` is the date of the oldest of those 90 rows.
+A match uses the last 90 trading days of closes: 90 `daily_bar` rows, not 90 calendar days. `window_end` is the as-of date (the latest official `dnse` bar among eligible names for this run). `window_start` is the date of the oldest of those 90 rows.
 
 Min-max each window to 0–1. The lowest close maps to 0. The highest close maps to 1. The price level drops out.
 
@@ -158,7 +158,7 @@ Built.
 
 The market scan is the patterns you selected across the ticker scope. From a ticker, you ask the other way: which of the selected patterns that ticker has.
 
-Opening the ticker does not score. The page shows the last stored check for that ticker, or an empty state when there is none. Scan reads that ticker's last 90 sessions of high, low, and close, through the official bar on the as-of date. It tests only the patterns you selected, with the 10-session freshness rule. It stores the run and returns each match with the pattern name, forming or confirmed, the score, and the swing dates and prices. The chart draws those points on that ticker. A later open reads those stored rows and does not score again.
+Opening the ticker does not score. The one-ticker control is the Scan tab of the side panel, after Company, Note, and Alert. It is not above the chart. The tab shows the last stored check for that ticker, or an empty state when there is none. Opening the tab does not score. Scan reads that ticker's last 90 sessions of high, low, and close, through the official bar on the as-of date. It tests only the patterns you selected, with the 10-session freshness rule. It stores the run and returns each match with the pattern name, forming or confirmed, the score, and the swing dates and prices. The daily price pane draws the selected match: swing points and the neckline, anchored to date and price. The highest score is selected by default. A symbol opened from a market-scan hit keeps that hit's marks until you select another result on the Scan tab. Changing indicators, pan, and zoom keeps the marks. Drawings you made stay. No match removes only the pattern marks. A later open reads those stored rows and does not score again.
 
 The check and the market scan call the same match rule. A stretch that matches in one view matches in the other when that pattern was selected. A pattern from the previous week matches in both. A stretch that sits only from T-60 to T-30 matches in neither.
 
@@ -177,13 +177,13 @@ Look-alike spec fields (`reference`, `min_score`, `top_k`) are not fields on kin
 
 ## 5. When it runs
 
-Look-alike follows a finished backfill pass that is allowed to include today. That is the target-end-date rule in `docs/backfill-workflow.md` section 4.2: at or after 16:30 ICT on a weekday, or a later catch-up, including a pass on Saturday or Sunday. `as_of` on the look-alike run is that target date.
+Look-alike runs when you press Scan on the Scans page, for the one saved pattern that is selected. It does not run after backfill. It does not run on the 30-minute poll. It does not run when the page opens. `as_of` is the latest official `dnse` bar among eligible names.
 
-`python -m app.jobs.backfill` runs look-alike after that pass commits, including `--follow`. A weekday pass before 16:30 stops at the previous weekday and does not start a look-alike scan. A pass that exits early (lock held, missing keys, or auth failure) does not start a look-alike scan.
+`python -m app.jobs.backfill` does not start a look-alike scan, including `--follow`, a weekday pass before 16:30, a pass at or after 16:30, a weekend pass, or a pass that exits early (lock held, missing keys, or auth failure).
 
-Look-alike reads `daily_bar`. It does not call DNSE. It does not run on page open. It is not added to the 30-minute API poll. The API process has no 16:30 history job for it to join.
+Look-alike reads `daily_bar`. It does not call DNSE. The API process has no 16:30 history job, and the 30-minute quote poll does not score patterns.
 
-Enabled `daily` look-alike patterns run in this same pass. A named pattern does not. Named scans are not a second job and they are not part of this pass.
+There is no pattern multi-select and no ticker subset on look-alike. That press scores the one saved pattern. A named pattern is not part of it.
 
 A named scan runs when you press Scan. The market scan and the one-ticker check both read stored `daily_bar` rows. Neither calls DNSE. Neither runs because a page opened. Neither is on the 30-minute poll. The as-of date is the latest official `dnse` bar in the requested scope.
 
@@ -219,7 +219,7 @@ The reference field uses the same capped search as the market list. It calls `GE
 
 A hit opens a compare view. The reference is on the left. The match is on the right. Both charts are those same 90 sessions, from `window_start` through `window_end`. Each chart has its own price scale, in đồng. The score is in the header. That is the comparison. The list itself stays short. The compare read loads those two tickers' bars. It does not load the catalog.
 
-There is no "scan now" button for look-alike. A look-alike control on the page does not walk the catalog in the request.
+Scan on that form runs the saved pattern. It stays disabled until a saved, enabled pattern is selected and the form still matches that saved pattern, including its reference. The request sends that pattern id. It does not send a pattern list or a ticker subset, and it does not walk the catalog in the browser. Saving still does not start a run.
 
 ### Named pattern
 
@@ -233,7 +233,7 @@ The floor is 0.70 and the cap is 20 hits per pattern (section 4). The control do
 
 A hit opens that ticker's daily chart for the date window and draws the saved swing points and the neckline. There is no second chart. The points come from the hit. They are not a user drawing. Switching indicators leaves the marks in place.
 
-From a ticker, the same catalog is a searchable multi-select. Scan scores only the selected patterns on that ticker and stores the run. Opening the ticker shows the last stored check, or an empty state when there is none. It does not score on open. Same rules and the same 10-session freshness as the market scan. The chart draws the swing points and the neckline on that ticker. The check does not walk other tickers. An empty list is an empty state, not an error.
+From a ticker, the same catalog is a searchable multi-select on the Scan tab. That tab is last: Company, then Note, then Alert, then Scan. Scan scores only the selected patterns on that ticker and stores the run. Opening the ticker shows the last stored check on that tab, or an empty state when there is none. It does not score on open, and opening the tab does not score. Same rules and the same 10-session freshness as the market scan. The chart draws the selected match on the daily price pane. The highest score is selected by default. A market-scan hit that opened the symbol stays on the chart until you select another row. The check does not walk other tickers. An empty list is an empty state, not an error. The pattern picker is not above the chart.
 
 ---
 
@@ -260,14 +260,14 @@ One engine. A method is a function: given the pattern spec and the prepared bars
 | `name` | Shown on the list, the header, and the Telegram message |
 | `kind` | `lookalike` is built. `named` is the manual scan kind. `rule` and `shape` are reserved |
 | `spec` | JSON. Look-alike holds `reference`, `min_score`, `top_k`. A saved named row is not what the scan runs |
-| `schedule` | `daily` now, for look-alike. `weekly` and `both` are reserved |
+| `schedule` | `daily` is stored for look-alike. It is not a clock. `weekly` and `both` are reserved |
 | `enabled` | Disabled look-alike patterns are stored, shown, and not scored |
 
-A later kind puts its own parameters in `spec`. It does not need a new table. This job scores enabled look-alike patterns whose `schedule` is `daily`. It does not score named patterns.
+A later kind puts its own parameters in `spec`. It does not need a new table. A Scan press scores that one enabled look-alike pattern. It does not score named patterns, and backfill does not call it.
 
 ### `scan_run`
 
-One row per enabled `daily` look-alike pattern in the pass. A user-triggered named scan is also one row, for the whole selection, not one row per pattern and not a row from the backfill pass. A run that clears nothing still gets an `ok` row, so the screen can tell "nothing above the floor" from "this was not scored". The named row's `request` records the pattern names and the ticker scope (`all`, or `subset` plus the tickers, or the one ticker). Reopening the page reads the newest `ok` row for that mode.
+One row each time you press Scan for one look-alike pattern. A user-triggered named scan is also one row, for the whole selection, not one row per pattern and not a row from the backfill pass. A run that clears nothing still gets an `ok` row, so the screen can tell "nothing above the floor" from "this was not scored". The named row's `request` records the pattern names and the ticker scope (`all`, or `subset` plus the tickers, or the one ticker). Reopening the page reads the newest `ok` row for that mode.
 
 | Column | Meaning |
 | --- | --- |
@@ -277,10 +277,10 @@ One row per enabled `daily` look-alike pattern in the pass. A user-triggered nam
 | `status` | `ok` or `failed` |
 | `eligible_count` | Names that met that method's universe. Section 3 for look-alike. Section 4 for a named pattern |
 | `compared_count` | Look-alike: names passed to Pearson. Named pattern: names tested against the rule |
-| `as_of` | Look-alike: backfill target date. Named: latest official bar in the requested scope. Hit `window_end` is this date |
+| `as_of` | Latest official `dnse` bar in the requested scope. For look-alike that scope is the eligible universe. Hit `window_end` is this date |
 | `request` | Named runs only. Pattern names and ticker scope. Look-alike leaves this empty |
 
-Hits for that pattern are written only after its scoring finishes. Status becomes `ok` only after those hits are committed. On failure the row is `failed`, that run has no hits, and this pattern's previous `ok` run stays the one the screen reads. The next pattern in the pass still runs. The loop stays one load of bars, then one registered method per pattern.
+Hits for that pattern are written only after its scoring finishes. Status becomes `ok` only after those hits are committed. On failure the row is `failed`, that run has no hits, and this pattern's previous `ok` run stays the one the screen reads. One Scan press loads the bars once and calls the registered method for that pattern.
 
 ### `scan_hit`
 
@@ -325,6 +325,7 @@ Look-alike (built):
 - A symbol stored as HCX / `type=bond` is not eligible. An index is not eligible. An ETF with 90 `dnse` bars is eligible.
 - A window whose newest bar is `source=quote` is not eligible.
 - A failed run leaves the previous hits queryable.
+- Look-alike runs from Scan on one saved pattern. Backfill does not start it. The 30-minute poll does not start it.
 - Kind `lookalike` is dispatched through the method registry. The job does not call Pearson directly.
 
 Named patterns:
@@ -345,7 +346,7 @@ Named patterns:
 
 ## 11. Out of scope
 
-- A look-alike "scan now" button, or a named scan of every pattern when you selected a subset.
+- Running look-alike after backfill or on the 30-minute poll, or a named scan of every pattern when you selected a subset.
 - numpy or pandas.
 - Stored normalized series, or a table of indicator points for the scan.
 - A bond browser on the market list, or a rewrite of the HCX board code.

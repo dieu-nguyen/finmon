@@ -12,6 +12,12 @@ import { markFrom, patternLabel, stateLabel, type PatternMark } from "../chart/p
 
 type SavedHit = { pattern: string; state: string; score: number; mark: PatternMark };
 
+const SIDE_TABS = ["Company", "Note", "Alert", "Scan"];
+
+function rankMatches(rows: NamedMatch[]): NamedMatch[] {
+  return [...rows].sort((a, b) => b.score - a.score || a.pattern.localeCompare(b.pattern));
+}
+
 function asCatalog(body: unknown): PatternCatalogItem[] {
   if (!Array.isArray(body)) return [];
   return body.flatMap((row) => {
@@ -67,6 +73,8 @@ export function SymbolPage() {
   const [scanning, setScanning] = useState(false);
   const [savedHit, setSavedHit] = useState<SavedHit | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  const [followDeepLink, setFollowDeepLink] = useState(true);
+  const [deepSettled, setDeepSettled] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,6 +152,7 @@ export function SymbolPage() {
     setNamedAsOf(null);
     setNamedReady(false);
     setScanning(false);
+    setFollowDeepLink(true);
     const ctrl = new AbortController();
     Promise.allSettled([api.patternCatalog({ signal: ctrl.signal }), api.namedPatterns(t, { signal: ctrl.signal })]).then(
       (settled) => {
@@ -166,13 +175,20 @@ export function SymbolPage() {
   }, [t]);
 
   useEffect(() => {
+    setFollowDeepLink(true);
+    setPicked(null);
+  }, [patternId]);
+
+  useEffect(() => {
     if (!patternId) {
       setSavedHit(null);
+      setDeepSettled(true);
       return;
     }
+    setDeepSettled(false);
+    const ctrl = new AbortController();
     if (/^\d+$/.test(patternId)) {
       const id = Number(patternId);
-      const ctrl = new AbortController();
       api
         .patternHits(id, { signal: ctrl.signal })
         .then((body) => {
@@ -181,23 +197,18 @@ export function SymbolPage() {
           const pattern = hit?.pattern ?? body.pattern ?? null;
           if (!hit || !mark || !pattern) {
             setSavedHit(null);
-            return;
+          } else {
+            setSavedHit({ pattern, state: hit.state || "", score: hit.score, mark });
           }
-          setSavedHit({ pattern, state: hit.state || "", score: hit.score, mark });
+          setDeepSettled(true);
         })
         .catch((error: unknown) => {
           if (isAbortError(error)) return;
           setSavedHit(null);
+          setDeepSettled(true);
         });
       return () => ctrl.abort();
     }
-    const local = matches.find((row) => row.pattern === patternId);
-    if (local) {
-      const mark = markFrom(local.swings);
-      setSavedHit(mark ? { pattern: local.pattern, state: local.state, score: local.score, mark } : null);
-      return;
-    }
-    const ctrl = new AbortController();
     api
       .namedScan({ signal: ctrl.signal })
       .then((body) => {
@@ -205,27 +216,37 @@ export function SymbolPage() {
         const mark = hit ? markFrom(hit.swings) : null;
         if (!hit || !mark || !hit.pattern) {
           setSavedHit(null);
-          return;
+        } else {
+          setSavedHit({ pattern: hit.pattern, state: hit.state || "", score: hit.score, mark });
         }
-        setSavedHit({ pattern: hit.pattern, state: hit.state || "", score: hit.score, mark });
+        setDeepSettled(true);
       })
       .catch((error: unknown) => {
         if (isAbortError(error)) return;
         setSavedHit(null);
+        setDeepSettled(true);
       });
     return () => ctrl.abort();
-  }, [t, patternId, matches]);
+  }, [t, patternId]);
 
-  const highlight = picked ?? (savedHit ? savedHit.pattern : null) ?? matches[0]?.pattern ?? null;
-  const savedOnly = Boolean(savedHit && !picked && !matches.some((row) => row.pattern === savedHit.pattern));
+  const ranked = useMemo(() => rankMatches(matches), [matches]);
+  const deepHit = followDeepLink && picked == null && savedHit ? savedHit : null;
+  const waitingForHit = Boolean(patternId) && followDeepLink && picked == null && !deepSettled;
+  const selectedPattern = picked ?? deepHit?.pattern ?? (waitingForHit ? null : (ranked[0]?.pattern ?? null));
   const chartMark = useMemo(() => {
+    if (waitingForHit) return null;
     if (picked) {
       const live = matches.find((row) => row.pattern === picked);
       return live ? markFrom(live.swings) : null;
     }
-    if (savedHit) return savedHit.mark;
-    return matches[0] ? markFrom(matches[0].swings) : null;
-  }, [picked, savedHit, matches]);
+    if (deepHit) return deepHit.mark;
+    return ranked[0] ? markFrom(ranked[0].swings) : null;
+  }, [waitingForHit, picked, matches, deepHit, ranked]);
+  const orphan = deepHit && !matches.some((row) => row.pattern === deepHit.pattern) ? deepHit : null;
+
+  function matchText(pattern: string, state: string, score: number) {
+    return `${patternLabel(pattern, catalog)} · ${stateLabel(state)} · ${score.toFixed(2)}`;
+  }
 
   async function runNamedScan() {
     if (selectedPatterns.length === 0 || scanning) return;
@@ -237,6 +258,9 @@ export function SymbolPage() {
       setSelectedPatterns(body.patterns);
       setNamedAsOf(body.as_of);
       setNamedReady(true);
+      setFollowDeepLink(false);
+      const best = rankMatches(body.matches)[0];
+      setPicked(best ? best.pattern : null);
     } catch {
       setErr("Scan failed");
     } finally {
@@ -270,32 +294,6 @@ export function SymbolPage() {
         </div>
       </div>
       {err ? <Banner kind="error">{err}</Banner> : null}
-      <div className="scan-bar" aria-label="Named patterns">
-        <MultiSelect label="Patterns" placeholder="Patterns" options={catalog} value={selectedPatterns} onChange={setSelectedPatterns} />
-        <Button type="button" disabled={selectedPatterns.length === 0 || scanning} onClick={() => void runNamedScan()}>
-          {scanning ? "Scanning" : "Scan"}
-        </Button>
-        {namedReady && namedAsOf ? <span className="scan-summary">as of {namedAsOf}</span> : null}
-        {namedReady && matches.length === 0 && !savedOnly ? (
-          <span className="pattern-empty">{namedAsOf ? "No named pattern on this ticker" : "No named pattern scan yet"}</span>
-        ) : null}
-        {savedOnly && savedHit ? (
-          <button type="button" className="chip on" aria-pressed="true">
-            {patternLabel(savedHit.pattern, catalog)} · {stateLabel(savedHit.state)} · {savedHit.score.toFixed(2)}
-          </button>
-        ) : null}
-        {matches.map((row) => (
-          <button
-            key={row.pattern}
-            type="button"
-            className={highlight === row.pattern ? "chip on" : "chip"}
-            aria-pressed={highlight === row.pattern}
-            onClick={() => setPicked(row.pattern)}
-          >
-            {patternLabel(row.pattern, catalog)} · {stateLabel(row.state)} · {row.score.toFixed(2)}
-          </button>
-        ))}
-      </div>
       <div className="symbol-split">
         <div className="chart-frame">
           {bars.length === 0 ? (
@@ -316,7 +314,7 @@ export function SymbolPage() {
           )}
         </div>
         <aside className="rail">
-          <Tabs stretch tabs={["Company", "Note", "Alert"]} value={tab} onChange={setTab} />
+          <Tabs stretch tabs={SIDE_TABS} value={tab} onChange={setTab} />
           <div className="rail-body">
             {tab === "Company" ? (
               company ? <CompanyPanel payload={company} /> : company === null ? <EmptyState text="Company data unavailable" /> : <Spinner />
@@ -365,6 +363,39 @@ export function SymbolPage() {
                 </label>
                 <Button type="submit">Add alert</Button>
               </form>
+            ) : null}
+            {tab === "Scan" ? (
+              <div className="scan-panel" aria-label="Named patterns">
+                <MultiSelect label="Patterns" placeholder="Patterns" options={catalog} value={selectedPatterns} onChange={setSelectedPatterns} />
+                <Button type="button" disabled={selectedPatterns.length === 0 || scanning} onClick={() => void runNamedScan()}>
+                  {scanning ? "Scanning" : "Scan"}
+                </Button>
+                {namedReady && namedAsOf ? <span className="scan-summary">as of {namedAsOf}</span> : null}
+                {namedReady && matches.length === 0 && !orphan ? (
+                  <span className="pattern-empty">{namedAsOf ? "No named pattern on this ticker" : "No named pattern scan yet"}</span>
+                ) : null}
+                <div className="scan-results">
+                  {orphan ? (
+                    <button type="button" className="scan-row on" aria-pressed="true">
+                      {matchText(orphan.pattern, orphan.state, orphan.score)}
+                    </button>
+                  ) : null}
+                  {ranked.map((row) => (
+                    <button
+                      key={row.pattern}
+                      type="button"
+                      className={selectedPattern === row.pattern ? "scan-row on" : "scan-row"}
+                      aria-pressed={selectedPattern === row.pattern}
+                      onClick={() => {
+                        setFollowDeepLink(false);
+                        setPicked(row.pattern);
+                      }}
+                    >
+                      {matchText(row.pattern, row.state, row.score)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : null}
           </div>
         </aside>

@@ -123,7 +123,7 @@ def _score_one(
     eligible_count: int,
     as_of: date,
     sender: TelegramSender,
-) -> None:
+) -> bool:
     started = _now()
     spec = dict(pattern.spec or {})
     try:
@@ -143,7 +143,7 @@ def _score_one(
             )
         )
         db.commit()
-        return
+        return False
     run = ScanRun(
         pattern_id=pattern.id,
         started_at=started,
@@ -178,10 +178,12 @@ def _score_one(
     try:
         sender.send(message)
     except Exception:
-        return
+        return True
+    return True
 
 
 def run_pattern_scan(db: Session, as_of: date, settings: Settings | None = None) -> None:
+    """Score enabled daily look-alike patterns. Backfill and the quote poll do not call this."""
     settings = settings or get_settings()
     windows, eligible_count = load_windows(db, as_of)
     patterns = list(
@@ -203,6 +205,47 @@ def run_pattern_scan(db: Session, as_of: date, settings: Settings | None = None)
 
 class NamedScanFailed(Exception):
     """Scoring failed after a failed scan_run was stored."""
+
+
+class LookalikeScanFailed(Exception):
+    """Scoring failed after a failed scan_run was stored."""
+
+
+def trigger_lookalike(db: Session, pattern_id: int, settings: Settings | None = None) -> None:
+    """Score one saved look-alike pattern against the eligible universe."""
+    settings = settings or get_settings()
+    pattern = db.get(PatternDef, pattern_id)
+    if pattern is None or pattern.kind != "lookalike" or not pattern.enabled:
+        raise LookalikeScanFailed
+    reference = str((pattern.spec or {}).get("reference") or "").strip()
+    if not reference:
+        raise LookalikeScanFailed
+    as_of = _latest_as_of(db, None) or date.today()
+    try:
+        windows, eligible = load_windows(db, as_of)
+    except Exception:
+        db.rollback()
+        db.add(
+            ScanRun(
+                pattern_id=pattern.id,
+                started_at=_now(),
+                finished_at=_now(),
+                status="failed",
+                eligible_count=0,
+                compared_count=0,
+                as_of=as_of,
+                reference_compared=False,
+            )
+        )
+        db.commit()
+        raise LookalikeScanFailed
+    sender = TelegramSender(settings.telegram_bot_token, settings.telegram_chat_id)
+    try:
+        ok = _score_one(db, pattern, windows, eligible, as_of, sender)
+    finally:
+        sender._client.close()
+    if not ok:
+        raise LookalikeScanFailed
 
 
 MANUAL_PATTERN_NAME = "Named patterns"

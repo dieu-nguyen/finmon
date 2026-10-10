@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Bar } from "../api";
 import { buildDailyOption } from "./dailyOption";
+import type { PatternMark } from "./patternMarks";
 import { filterIndicators, INDICATORS, indicatorQuery, toggleIndicator } from "./indicators";
 
 const colors = {
@@ -19,10 +20,15 @@ const bars: Bar[] = [
   { date: "2026-01-03", open: 11, high: 13, low: 10, close: 12, volume: 120 },
 ];
 
-function optionFor(indicatorIds: string[], indicatorData: Record<string, unknown> | null, extra?: { refPrice?: number }) {
+function optionFor(
+  indicatorIds: string[],
+  indicatorData: Record<string, unknown> | null,
+  extra?: { refPrice?: number; patternMark?: PatternMark | null },
+) {
   return buildDailyOption({
     bars,
     drawings: [{ tool: "horizontal", points: [{ date: "2026-01-02", price: 11 }] }],
+    patternMark: extra?.patternMark,
     indicatorIds,
     indicatorData,
     refPrice: extra?.refPrice ?? null,
@@ -194,6 +200,45 @@ describe("indicator drawing", () => {
     expect(view.option.yAxis[1]?.scale).toBe(true);
     expect(view.option.yAxis[1]?.min).toBeUndefined();
     expect(seriesOf(view).find((item) => item.type === "bar")?.yAxisIndex).toBe(2);
+  });
+
+  it("anchors a pattern to date and price on the candle pane and leaves a user line when the pattern is gone", () => {
+    const patternMark: PatternMark = {
+      points: [
+        { date: "2026-01-02", price: 9, role: "low" },
+        { date: "2026-01-03", price: 13, role: "peak" },
+      ],
+      neckline: [
+        { date: "2026-01-02", price: 12 },
+        { date: "2026-01-03", price: 12 },
+      ],
+    };
+    const marked = optionFor(["rsi"], { "rsi:14": [30, 70] }, { patternMark });
+    const candle = seriesOf(marked).find((item) => item.type === "candlestick");
+    const rsi = seriesOf(marked).find((item) => item.name === "RSI (14)");
+    expect(candle?.yAxisIndex ?? 0).toBe(0);
+    expect(rsi?.yAxisIndex).not.toBe(0);
+    expect(marked.option.dataZoom.every((zoom) => zoom.xAxisIndex.includes(0))).toBe(true);
+    expect(candle?.markPoint?.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ coord: ["2026-01-02", 9], value: "low" }),
+        expect.objectContaining({ coord: ["2026-01-03", 13], value: "peak" }),
+      ]),
+    );
+    expect(candle?.markLine?.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ yAxis: 11 }),
+        [
+          expect.objectContaining({ coord: ["2026-01-02", 12] }),
+          expect.objectContaining({ coord: ["2026-01-03", 12] }),
+        ],
+      ]),
+    );
+
+    const cleared = optionFor(["rsi"], { "rsi:14": [30, 70] }, { patternMark: null });
+    const bare = seriesOf(cleared).find((item) => item.type === "candlestick");
+    expect(bare?.markPoint?.data).toEqual([]);
+    expect(bare?.markLine?.data).toEqual([expect.objectContaining({ yAxis: 11 })]);
   });
 
   it("draws candles and volume only when nothing is selected", () => {

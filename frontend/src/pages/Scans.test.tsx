@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Scans } from "./Scans";
@@ -81,18 +81,24 @@ describe("Scans named patterns", () => {
     expect(calls.filter((call) => call.url.includes("/named-scans")).every((call) => call.method === "GET")).toBe(true);
     expect(screen.queryByRole("link", { name: "Compare" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove Double bottom" }));
-    expect(screen.getByRole("button", { name: "Scan" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("combobox", { name: "Patterns" }));
-    fireEvent.click(screen.getByRole("option", { name: "Double top" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Ticker scope" }), { target: { value: "subset" } });
-    expect(screen.getByRole("button", { name: "Scan" })).toBeDisabled();
+    const named = within(screen.getByRole("region", { name: "Named pattern scan" }));
+    const lookalike = within(screen.getByRole("region", { name: "Look-alike" }));
+    expect(lookalike.queryByRole("combobox", { name: "Patterns" })).not.toBeInTheDocument();
+    expect(lookalike.queryByRole("combobox", { name: "Ticker scope" })).not.toBeInTheDocument();
+    expect(lookalike.getByRole("button", { name: "Scan" })).toBeDisabled();
+
+    fireEvent.click(named.getByRole("button", { name: "Remove Double bottom" }));
+    expect(named.getByRole("button", { name: "Scan" })).toBeDisabled();
+    fireEvent.click(named.getByRole("combobox", { name: "Patterns" }));
+    fireEvent.click(named.getByRole("option", { name: "Double top" }));
+    fireEvent.change(named.getByRole("combobox", { name: "Ticker scope" }), { target: { value: "subset" } });
+    expect(named.getByRole("button", { name: "Scan" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("combobox", { name: "Tickers" }));
     fireEvent.change(screen.getByRole("combobox", { name: "Tickers" }), { target: { value: "VH" } });
     fireEvent.click(await screen.findByRole("option", { name: /VHM/ }));
-    expect(screen.getByRole("button", { name: "Scan" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+    expect(named.getByRole("button", { name: "Scan" })).toBeEnabled();
+    fireEvent.click(named.getByRole("button", { name: "Scan" }));
 
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]).toEqual({ patterns: ["double_top"], scope: "subset", tickers: ["VHM"] });

@@ -3,6 +3,8 @@
 Status: accepted
 Date: 2026-09-28
 
+The automatic-after-backfill schedule in this decision is superseded by `docs/adr/0007-manual-pattern-scans.md`. The method below still stands: 90 closes, min-max, Pearson, reference excluded, top 20, floor 0.85, one Telegram message, and a failed run keeps the previous hits. Both scan kinds now run only when the user triggers them.
+
 ## Context
 
 Scoring thousands of names when the page opens, or on the 30-minute poll, would walk the catalog in the request. A `source=quote` bar is sampled last prices, not the exchange OHLC.
