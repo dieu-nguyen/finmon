@@ -160,7 +160,7 @@ Built.
 
 The market scan is the patterns you selected across the ticker scope. From a ticker, you ask the other way: which of the selected patterns that ticker has.
 
-Opening the ticker does not score. The one-ticker control is the Scan tab of the side panel, after Company, Note, and Alert. It is not above the chart. The tab shows the last stored check for that ticker, or an empty state when there is none. Opening the tab does not score. Scan reads that ticker's last 90 sessions of high, low, and close, through the official bar on the as-of date. It tests only the patterns you selected, with the 10-session freshness rule. It stores the run and returns each match with the pattern name, forming or confirmed, the score, and the swing dates and prices. The daily price pane draws the selected match: swing points and the neckline, anchored to date and price. The highest score is selected by default. A symbol opened from a market-scan hit keeps that hit's marks until you select another result on the Scan tab. Changing indicators, pan, and zoom keeps the marks. Drawings you made stay. No match removes only the pattern marks. A later open reads those stored rows and does not score again.
+Opening the ticker does not score. The one-ticker control is the Scan tab of the side panel, after Company, Note, and Alert. It is not above the chart. The tab shows that ticker's rows from the combined named-result list, or an empty state when the ticker is absent. Opening the tab does not score. Scan reads that ticker's last 90 sessions of high, low, and close, through the official bar on the as-of date. It tests only the patterns you selected, with the 10-session freshness rule. It stores the run and returns each match with the pattern name, forming or confirmed, the score, and the swing dates and prices. The daily price pane draws the selected match: swing points and the neckline, anchored to date and price. The highest score is selected by default. A symbol opened from a market-scan hit keeps that hit's marks until you select another result on the Scan tab. Changing indicators, pan, and zoom keeps the marks. Drawings you made stay. No match removes only the pattern marks. A later open reads the combined list and does not score again.
 
 The check and the market scan call the same match rule. A stretch that matches in one view matches in the other when that pattern was selected. A pattern from the previous week matches in both. A stretch that sits only from T-60 to T-30 matches in neither.
 
@@ -227,15 +227,15 @@ Scan on that form runs the saved pattern. It stays disabled until a saved, enabl
 
 The Scans page has a named-pattern run beside look-alike. You pick patterns from a searchable multi-select of the catalog. Ticker scope starts at all eligible names. You can switch to a subset and pick tickers with a searchable multi-select. Scan stays disabled until at least one pattern is selected. Subset mode stays disabled until at least one ticker is selected. All-tickers mode does not ask you to pick names.
 
-Scan scores only those patterns on that scope. The page then shows that stored run: the patterns, the scope, and the hits. Columns add the pattern, and forming or confirmed. The header shows those patterns and the as-of date. It does not show a reference ticker.
+Scan scores only those patterns on that scope. The page then shows the combined named-result list: every ticker whose newest covering run still has a hit inside the 10-session window. Columns add the pattern, forming or confirmed, and the run id, so two tickers can come from different runs. Hits are sorted by score descending, then ticker. A hit opens that ticker's chart with that pattern drawn. The header can still show the latest market scan's patterns, scope, and as-of date. It does not show a reference ticker.
 
-Empty when there is no successful named run yet, or the latest successful run stored no hit above the floor. There is no "reference was not compared" state. Opening the page reads the stored run and does not scan again.
+Empty when the combined list has no row. That is an empty state, not an error. There is no "reference was not compared" state. Opening the page reads the stored runs and does not scan again.
 
 The floor is 0.70 and the cap is 20 hits per pattern (section 4). The control does not ask for a reference ticker, a minimum score, or a top K.
 
 A hit opens that ticker's daily chart for the date window and draws the saved swing points and the neckline. There is no second chart. The points come from the hit. They are not a user drawing. Switching indicators leaves the marks in place.
 
-From a ticker, the same catalog is a searchable multi-select on the Scan tab. That tab is last: Company, then Note, then Alert, then Scan. Scan scores only the selected patterns on that ticker and stores the run. Opening the ticker shows the last stored check on that tab, or an empty state when there is none. It does not score on open, and opening the tab does not score. Same rules and the same 10-session freshness as the market scan. The chart draws the selected match on the daily price pane. The highest score is selected by default. A market-scan hit that opened the symbol stays on the chart until you select another row. The check does not walk other tickers. An empty list is an empty state, not an error. The pattern picker is not above the chart.
+From a ticker, the same catalog is a searchable multi-select on the Scan tab. That tab is last: Company, then Note, then Alert, then Scan. Scan scores only the selected patterns on that ticker and stores the run. Opening the ticker shows the same combined rows for that ticker, whether the winning run was a market scan or a one-ticker scan, or an empty state when the ticker is absent. It does not score on open, and opening the tab does not score. Same detection rules as the market scan. A stored hit is hidden when its last swing, or its confirming close if later, is more than 10 sessions behind that ticker's newest bar. The chart draws the selected match on the daily price pane. The highest score is selected by default. A hit opened from Scans stays on the chart until you select another row. The check does not walk other tickers. An empty list is an empty state, not an error. The pattern picker is not above the chart.
 
 ---
 
@@ -269,7 +269,7 @@ A later kind puts its own parameters in `spec`. It does not need a new table. A 
 
 ### `scan_run`
 
-One row each time you press Scan for one look-alike pattern. A user-triggered named scan is also one row, for the whole selection, not one row per pattern and not a row from the backfill pass. A run that clears nothing still gets an `ok` row, so the screen can tell "nothing above the floor" from "this was not scored". The named row's `request` records the pattern names and the ticker scope (`all`, or `subset` plus the tickers, or the one ticker). Reopening the page reads the newest `ok` row for that mode.
+One row each time you press Scan for one look-alike pattern. A user-triggered named scan is also one row, for the whole selection, not one row per pattern and not a row from the backfill pass. A run that clears nothing still gets an `ok` row, so the screen can tell "nothing above the floor" from "this was not scored". The named row's `request` records the pattern names and the ticker scope (`all`, or `subset` plus the tickers, or the one ticker). A new named run also stores `compared`, the tickers that run walked. Reopening Scans or a symbol reads one combined list. For each ticker, the newest `ok` named run that covered that ticker supplies the rows. A scope `all` run covers `compared` when that list is stored. An older scope `all` run that lacks it covers the eligible universe as of that run's `as_of`, plus any ticker that run has a hit for. A subset run and a one-ticker run cover `request.tickers` only. A ticker with no hit on that run is absent. A newer scan of one ticker does not remove another.
 
 | Column | Meaning |
 | --- | --- |
@@ -280,9 +280,9 @@ One row each time you press Scan for one look-alike pattern. A user-triggered na
 | `eligible_count` | Names that met that method's universe. Section 3 for look-alike. Section 4 for a named pattern |
 | `compared_count` | Look-alike: names passed to Pearson. Named pattern: names tested against the rule |
 | `as_of` | Latest official `dnse` bar in the requested scope. For look-alike that scope is the eligible universe. Hit `window_end` is this date |
-| `request` | Named runs only. Pattern names and ticker scope. Look-alike leaves this empty |
+| `request` | Named runs only. Pattern names, ticker scope, and on a new run `compared` (the tickers walked). Look-alike leaves this empty |
 
-Hits for that pattern are written only after its scoring finishes. Status becomes `ok` only after those hits are committed. On failure the row is `failed`, that run has no hits, and this pattern's previous `ok` run stays the one the screen reads. One Scan press loads the bars once and calls the registered method for that pattern.
+Hits for that pattern are written only after its scoring finishes. Status becomes `ok` only after those hits are committed. On failure the row is `failed`, that run has no hits, and this pattern's previous `ok` run stays the one the look-alike screen reads. A failed named run covers no ticker, so the combined list keeps the previous ok hits. One Scan press loads the bars once and calls the registered method for that pattern.
 
 ### `scan_hit`
 
@@ -294,7 +294,7 @@ Hits for that pattern are written only after its scoring finishes. Status become
 | `score` | Look-alike: Pearson, from −1 to 1. Named pattern: fit of the swings, from 0 to 1, floor 0.70. Even tops or bottoms score higher. A head that barely sticks out scores lower. A later yes/no rule stores 1 for a hit |
 | `window_start` | Look-alike: oldest session in the 90. Named pattern: date of the earliest swing in the match |
 | `window_end` | As-of date |
-| `swings` | Named pattern: the swing dates and prices, in the order the rule names them, plus the neckline endpoints. Look-alike leaves this empty |
+| `swings` | Named pattern: the swing dates and prices, in the order the rule names them, plus the neckline endpoints. A confirmed hit also stores `confirmed_on`, the confirming close date. Look-alike leaves this empty |
 | `state` | Named pattern: `forming` or `confirmed`. Look-alike leaves this empty |
 
 Shared columns stay on the one hit table. Do not invent a second hit table.
@@ -343,6 +343,10 @@ Named patterns:
 - The backfill pass does not run a named scan. Opening a symbol does not score. A triggered one-ticker run is stored, and a later read returns those rows without scoring again.
 - A market trigger limited to a ticker subset does not load tickers outside that subset.
 - A failed named run leaves the previous hits queryable and sends no Telegram. A failed Telegram send keeps the `ok` run. The one-ticker check sends no Telegram.
+- A market run that hits ACV and XMD stays in place when a later VHM ticker run adds VHM. A later ACV ticker run with no hit removes ACV only.
+- The symbol query and the Scans query return the same hit for a ticker still in the combined list.
+- A stored hit whose last point is more than 10 sessions behind that ticker's newest bar is hidden. A hit inside those 10 sessions stays. The hidden row remains in `scan_hit`.
+- Look-alike still reads the newest ok run for that pattern only.
 
 ---
 

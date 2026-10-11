@@ -112,6 +112,7 @@ def test_double_bottom_at_the_right_edge_matches_and_an_old_one_does_not():
     assert hit.state == "forming"
     assert hit.score == 1
     assert hit.swings["points"][-1]["date"] == fresh.dates[89].isoformat()
+    assert "confirmed_on" not in hit.swings
     assert hit.swings["points"][-1]["price"] == 90
     assert hit.window_end == fresh.window_end
     assert hit.swings["neckline"][0]["price"] == 130
@@ -152,7 +153,9 @@ def test_confirmed_break_inside_ten_sessions_matches():
     hit = detect(_window(series), "double_bottom")
     assert hit is not None
     assert hit.state == "confirmed"
-    assert hit.swings["points"][-1]["date"] == _window(series).dates[76].isoformat()
+    window = _window(series)
+    assert hit.swings["points"][-1]["date"] == window.dates[76].isoformat()
+    assert hit.swings["confirmed_on"] == window.dates[85].isoformat()
 
 
 def test_one_ticker_and_market_detector_agree():

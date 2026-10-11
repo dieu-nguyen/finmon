@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
 from sqlalchemy import func, select
@@ -9,7 +10,7 @@ from app.clients.telegram import TelegramSender
 from app.config import Settings, get_settings
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns import Hit, MethodResult, method_for
-from app.patterns.named import PATTERN_LABELS, detect, score_named
+from app.patterns.named import FRESH_SESSIONS, PATTERN_LABELS, detect, score_named
 from app.patterns.windows import Window
 
 WINDOW = 90
@@ -357,6 +358,7 @@ def trigger_named_market(
         for name in patterns:
             hits.extend(score_named({"pattern": name}, windows).hits)
         compared = len(windows)
+        request = {**request, "compared": sorted(windows)}
     except Exception:
         db.rollback()
         _save_named_run(
@@ -404,6 +406,7 @@ def trigger_named_ticker(db: Session, ticker: str, patterns: list[str]) -> None:
                         )
                     )
         eligible = 1 if window is not None else 0
+        request = {**request, "compared": [symbol] if window is not None else []}
     except Exception:
         db.rollback()
         _save_named_run(
@@ -439,3 +442,116 @@ def latest_named_run(db: Session, *, mode: str, ticker: str | None = None) -> Sc
             continue
         return row
     return None
+
+
+@dataclass(frozen=True)
+class NamedTickerResult:
+    run: ScanRun
+    hits: list[ScanHit]
+
+
+def _request_tickers(raw: object) -> set[str]:
+    if not isinstance(raw, list):
+        return set()
+    return {str(item).strip().upper() for item in raw if str(item).strip()}
+
+
+def _swing_pattern(hit: ScanHit) -> str:
+    swings = hit.swings if isinstance(hit.swings, dict) else {}
+    pattern = swings.get("pattern") if isinstance(swings, dict) else None
+    return pattern if isinstance(pattern, str) else ""
+
+
+def _parse_day(value: object) -> date | None:
+    if not isinstance(value, str) or len(value) < 10:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
+def _anchor_date(hit: ScanHit) -> date | None:
+    swings = hit.swings if isinstance(hit.swings, dict) else {}
+    points = swings.get("points") if isinstance(swings.get("points"), list) else []
+    swing_dates = [_parse_day(point.get("date")) for point in points if isinstance(point, dict)]
+    last_swing = max((day for day in swing_dates if day is not None), default=None)
+    confirmed = _parse_day(swings.get("confirmed_on"))
+    candidates = [day for day in (last_swing, confirmed) if day is not None]
+    if not candidates:
+        return None
+    return max(candidates)
+
+
+def _fresh_hits(db: Session, hits: list[ScanHit]) -> list[ScanHit]:
+    if not hits:
+        return []
+    tickers = sorted({hit.ticker for hit in hits})
+    rows = db.execute(select(DailyBar.ticker, DailyBar.date).where(DailyBar.ticker.in_(tickers))).all()
+    dates: dict[str, set[date]] = {}
+    for ticker, day in rows:
+        dates.setdefault(ticker, set()).add(day)
+    kept: list[ScanHit] = []
+    for hit in hits:
+        series = dates.get(hit.ticker)
+        anchor = _anchor_date(hit)
+        if series and anchor is not None:
+            behind = sum(1 for day in series if day > anchor)
+            if behind > FRESH_SESSIONS:
+                continue
+        kept.append(hit)
+    return kept
+
+
+def _covered_tickers(db: Session, run: ScanRun, hit_tickers: set[str], eligible_cache: dict[date, set[str]]) -> set[str]:
+    req = run.request or {}
+    mode = req.get("mode")
+    if mode == "ticker" or req.get("scope") == "subset":
+        return _request_tickers(req.get("tickers"))
+    if mode != "market":
+        return set()
+    compared = req.get("compared")
+    if isinstance(compared, list):
+        return _request_tickers(compared)
+    as_of = run.as_of
+    if as_of not in eligible_cache:
+        windows, _eligible = load_windows(db, as_of)
+        eligible_cache[as_of] = set(windows)
+    return set(eligible_cache[as_of]) | hit_tickers
+
+
+def combined_named(db: Session) -> dict[str, NamedTickerResult]:
+    """Newest ok named run that covered each ticker, and the hits still on screen."""
+    runs = [
+        row
+        for row in db.scalars(
+            select(ScanRun).where(ScanRun.status == "ok", ScanRun.request.is_not(None)).order_by(ScanRun.id.desc())
+        ).all()
+        if (row.request or {}).get("mode") in ("market", "ticker")
+    ]
+    if not runs:
+        return {}
+    by_run: dict[int, list[ScanHit]] = {}
+    for hit in db.scalars(select(ScanHit).where(ScanHit.run_id.in_([row.id for row in runs]))).all():
+        by_run.setdefault(hit.run_id, []).append(hit)
+    assigned: dict[str, ScanRun] = {}
+    pending: dict[str, list[ScanHit]] = {}
+    eligible_cache: dict[date, set[str]] = {}
+    for run in runs:
+        hit_rows = by_run.get(run.id, [])
+        covered = _covered_tickers(db, run, {hit.ticker.strip().upper() for hit in hit_rows}, eligible_cache)
+        grouped: dict[str, list[ScanHit]] = {}
+        for hit in hit_rows:
+            grouped.setdefault(hit.ticker.strip().upper(), []).append(hit)
+        for symbol in covered:
+            if symbol in assigned:
+                continue
+            assigned[symbol] = run
+            pending[symbol] = list(grouped.get(symbol, []))
+    fresh_ids = {hit.id for hit in _fresh_hits(db, [hit for rows in pending.values() for hit in rows])}
+    view: dict[str, NamedTickerResult] = {}
+    for symbol, run in assigned.items():
+        kept = [hit for hit in pending[symbol] if hit.id in fresh_ids]
+        kept.sort(key=lambda hit: (-hit.score, hit.ticker, _swing_pattern(hit)))
+        view[symbol] = NamedTickerResult(run=run, hits=kept)
+    return view

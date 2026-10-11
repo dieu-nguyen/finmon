@@ -156,8 +156,16 @@ def _iso(day: date) -> str:
     return day.isoformat()
 
 
-def _payload(pattern: str, roles: list[str], group: tuple[Swing, ...], neck_from: Swing, neck_to: date, neck_price: float) -> dict:
-    return {
+def _payload(
+    pattern: str,
+    roles: list[str],
+    group: tuple[Swing, ...],
+    neck_from: Swing,
+    neck_to: date,
+    neck_price: float,
+    confirmed_on: date | None = None,
+) -> dict:
+    payload = {
         "pattern": pattern,
         "points": [{"role": role, "date": _iso(swing.when), "price": swing.price} for role, swing in zip(roles, group)],
         "neckline": [
@@ -165,6 +173,9 @@ def _payload(pattern: str, roles: list[str], group: tuple[Swing, ...], neck_from
             {"date": _iso(neck_to), "price": neck_price},
         ],
     }
+    if confirmed_on is not None:
+        payload["confirmed_on"] = _iso(confirmed_on)
+    return payload
 
 
 def _hit(
@@ -177,6 +188,7 @@ def _hit(
     neck_from: Swing,
     neck_price: float,
     last_index: int,
+    confirmed_on: date | None = None,
 ) -> NamedHit:
     return NamedHit(
         pattern=pattern,
@@ -184,7 +196,15 @@ def _hit(
         state=state,
         window_start=group[0].when,
         window_end=window.window_end,
-        swings=_payload(pattern, roles, group, neck_from, window.window_end, neck_price),
+        swings=_payload(
+            pattern,
+            roles,
+            group,
+            neck_from,
+            window.window_end,
+            neck_price,
+            confirmed_on if state == "confirmed" else None,
+        ),
         last_index=last_index,
     )
 
@@ -220,10 +240,25 @@ def _double_bottom(window: Window, swings: list[Swing]) -> list[NamedHit]:
         even = pair_evenness(left.price, right.price)
         if even is None:
             continue
-        state = _outcome(n, right.index, _cross_level(closes, right.index, peak.price, above=True))
+        break_at = _cross_level(closes, right.index, peak.price, above=True)
+        state = _outcome(n, right.index, break_at)
         if state is None:
             continue
-        found.append(_hit("double_bottom", even, state, window, ["low", "peak", "low"], (left, peak, right), peak, peak.price, right.index))
+        confirmed_on = window.dates[break_at] if state == "confirmed" and break_at is not None else None
+        found.append(
+            _hit(
+                "double_bottom",
+                even,
+                state,
+                window,
+                ["low", "peak", "low"],
+                (left, peak, right),
+                peak,
+                peak.price,
+                right.index,
+                confirmed_on,
+            )
+        )
     return found
 
 
@@ -237,10 +272,25 @@ def _double_top(window: Window, swings: list[Swing]) -> list[NamedHit]:
         even = pair_evenness(left.price, right.price)
         if even is None:
             continue
-        state = _outcome(n, right.index, _cross_level(closes, right.index, trough.price, above=False))
+        break_at = _cross_level(closes, right.index, trough.price, above=False)
+        state = _outcome(n, right.index, break_at)
         if state is None:
             continue
-        found.append(_hit("double_top", even, state, window, ["high", "trough", "high"], (left, trough, right), trough, trough.price, right.index))
+        confirmed_on = window.dates[break_at] if state == "confirmed" and break_at is not None else None
+        found.append(
+            _hit(
+                "double_top",
+                even,
+                state,
+                window,
+                ["high", "trough", "high"],
+                (left, trough, right),
+                trough,
+                trough.price,
+                right.index,
+                confirmed_on,
+            )
+        )
     return found
 
 
@@ -294,7 +344,10 @@ def _shoulders(window: Window, swings: list[Swing], *, inverse: bool) -> list[Na
             continue
         neck_price = _line(n - 1, mid1.index, mid1.price, mid2.index, mid2.price)
         score = (even + clarity) / 2
-        found.append(_hit(pattern, score, state, window, roles, (left, mid1, head, mid2, right), mid1, neck_price, right.index))
+        confirmed_on = window.dates[break_at] if state == "confirmed" and break_at is not None else None
+        found.append(
+            _hit(pattern, score, state, window, roles, (left, mid1, head, mid2, right), mid1, neck_price, right.index, confirmed_on)
+        )
     return found
 
 
