@@ -326,4 +326,55 @@ describe("Symbol named-pattern readout", () => {
       expect(marks.some((mark) => mark.coord?.[0] === "2026-09-18")).toBe(false);
     });
   });
+
+  it("draws a look-alike hit from a numeric pattern query", async () => {
+    const calls: { url: string; method: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        calls.push({ url, method });
+        if (url.includes("/pattern-catalog")) return json(catalog);
+        if (url.includes("/bars")) return json(bars);
+        if (url.endsWith("/api/patterns/3/hits")) {
+          return json({
+            pattern_id: 3,
+            name: "Rise",
+            kind: "lookalike",
+            reference: "VCB",
+            as_of: "2026-09-28",
+            hits: [
+              {
+                ticker: "VHM",
+                name: "Vinhomes",
+                score: 0.9,
+                window_start: "2026-09-18",
+                window_end: "2026-09-28",
+                state: "forming",
+                pattern: "double_top",
+                swings: { pattern: "double_top", points: [{ role: "high", date: "2026-09-18", price: 140 }], neckline: [] },
+              },
+            ],
+          });
+        }
+        if (url.includes("/named-patterns")) {
+          return json({ ticker: "VHM", as_of: null, patterns: [], matches: [] });
+        }
+        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.endsWith("/page-note")) return json({ body: "" });
+        if (url.endsWith("/drawings")) return json([]);
+        if (url.includes("/indicators")) return json({ dates: ["2026-09-28"], "sma:20": [10] });
+        return json({ ticker: "VHM", name: "Vinhomes", board: "HOSE", type: "stock", listed: true, last: 11, change: 0, volume: 100, watchlist: false });
+      }),
+    );
+
+    renderSymbol("/symbol/VHM?pattern=3");
+    await waitFor(() => {
+      const marks = JSON.parse(screen.getByTestId("chart-option").getAttribute("data-marks") || "[]") as { coord?: string[] }[];
+      expect(marks.some((mark) => mark.coord?.[0] === "2026-09-18")).toBe(true);
+    });
+    expect(calls.some((call) => call.url.endsWith("/api/patterns/3/hits") && call.method === "GET")).toBe(true);
+    expect(calls.some((call) => call.url.includes("/named-scans"))).toBe(false);
+  });
 });
