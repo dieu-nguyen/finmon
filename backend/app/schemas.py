@@ -113,6 +113,7 @@ class HitOut(BaseModel):
     state: str | None = None
     swings: dict[str, Any] | None = None
     pattern: str | None = None
+    run_id: int | None = None
 
 
 class HitsOut(BaseModel):
@@ -133,6 +134,7 @@ class NamedMatchOut(BaseModel):
     window_start: date
     window_end: date
     swings: dict[str, Any]
+    run_id: int | None = None
 
 
 class NamedCheckOut(BaseModel):

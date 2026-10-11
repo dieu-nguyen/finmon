@@ -37,6 +37,7 @@ describe("Scans named patterns", () => {
           window_end: "2026-09-28",
           state: "forming",
           pattern: "double_bottom",
+          run_id: 7,
           swings: { points: [{ role: "low", date: "2026-09-20", price: 90 }], neckline: [] },
         },
       ],
@@ -76,6 +77,8 @@ describe("Scans named patterns", () => {
 
     expect(await screen.findByRole("link", { name: "VHM" })).toHaveAttribute("href", "/symbol/VHM?pattern=double_bottom");
     expect(screen.getByText("Forming")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Run" })).toBeInTheDocument();
+    expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getAllByText("Double bottom").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/All tickers/).length).toBeGreaterThan(0);
     expect(calls.filter((call) => call.url.includes("/named-scans")).every((call) => call.method === "GET")).toBe(true);
