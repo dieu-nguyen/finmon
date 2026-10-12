@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { api, type Bar, type NamedCheck, type NamedMatch, type PatternCatalogItem, type SymbolRow } from "../api";
+import { api, type Bar, type NamedCheck, type NamedMatch, type SymbolRow } from "../api";
 import { displayBoard } from "./Market";
 import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Spinner, Tabs, Toast } from "../design-system";
 import { CompanyPanel } from "./CompanyPanel";
@@ -9,23 +9,15 @@ import type { Drawing, DrawingTool } from "../chart/drawings";
 import { DEFAULT_INDICATOR_IDS, indicatorQuery } from "../chart/indicators";
 import { MultiSelect } from "../components/MultiSelect";
 import { markFrom, patternLabel, stateLabel, type PatternMark } from "../chart/patternMarks";
+import { patternMenuOptions } from "../patterns/catalog";
 
 type SavedHit = { pattern: string; state: string; score: number; mark: PatternMark };
 
 const SIDE_TABS = ["Company", "Note", "Alert", "Scan"];
+const patternOptions = patternMenuOptions();
 
 function rankMatches(rows: NamedMatch[]): NamedMatch[] {
   return [...rows].sort((a, b) => b.score - a.score || a.pattern.localeCompare(b.pattern));
-}
-
-function asCatalog(body: unknown): PatternCatalogItem[] {
-  if (!Array.isArray(body)) return [];
-  return body.flatMap((row) => {
-    if (!row || typeof row !== "object") return [];
-    const item = row as { id?: unknown; label?: unknown };
-    if (typeof item.id !== "string" || typeof item.label !== "string") return [];
-    return [{ id: item.id, label: item.label }];
-  });
 }
 
 function asCheck(body: unknown): Pick<NamedCheck, "as_of" | "patterns" | "matches"> {
@@ -66,7 +58,6 @@ export function SymbolPage() {
   const [searchParams] = useSearchParams();
   const patternId = searchParams.get("pattern");
   const [matches, setMatches] = useState<NamedMatch[]>([]);
-  const [catalog, setCatalog] = useState<PatternCatalogItem[]>([]);
   const [selectedPatterns, setSelectedPatterns] = useState<string[]>([]);
   const [namedAsOf, setNamedAsOf] = useState<string | null>(null);
   const [namedReady, setNamedReady] = useState(false);
@@ -154,23 +145,21 @@ export function SymbolPage() {
     setScanning(false);
     setFollowDeepLink(true);
     const ctrl = new AbortController();
-    Promise.allSettled([api.patternCatalog({ signal: ctrl.signal }), api.namedPatterns(t, { signal: ctrl.signal })]).then(
-      (settled) => {
+    api
+      .namedPatterns(t, { signal: ctrl.signal })
+      .then((body) => {
         if (ctrl.signal.aborted) return;
-        const catalogResult = settled[0];
-        const namedResult = settled[1];
-        setCatalog(catalogResult.status === "fulfilled" ? asCatalog(catalogResult.value) : []);
-        if (namedResult.status === "fulfilled") {
-          const check = asCheck(namedResult.value);
-          setMatches(check.matches);
-          setSelectedPatterns(check.patterns);
-          setNamedAsOf(check.as_of);
-        } else if (!isAbortError(namedResult.reason)) {
-          setMatches([]);
-        }
+        const check = asCheck(body);
+        setMatches(check.matches);
+        setSelectedPatterns(check.patterns);
+        setNamedAsOf(check.as_of);
         setNamedReady(true);
-      },
-    );
+      })
+      .catch((error: unknown) => {
+        if (ctrl.signal.aborted || isAbortError(error)) return;
+        setMatches([]);
+        setNamedReady(true);
+      });
     return () => ctrl.abort();
   }, [t]);
 
@@ -245,7 +234,7 @@ export function SymbolPage() {
   const orphan = deepHit && !matches.some((row) => row.pattern === deepHit.pattern) ? deepHit : null;
 
   function matchText(pattern: string, state: string, score: number) {
-    return `${patternLabel(pattern, catalog)} · ${stateLabel(state)} · ${score.toFixed(2)}`;
+    return `${patternLabel(pattern, patternOptions)} · ${stateLabel(state)} · ${score.toFixed(2)}`;
   }
 
   async function runNamedScan() {
@@ -366,7 +355,7 @@ export function SymbolPage() {
             ) : null}
             {tab === "Scan" ? (
               <div className="scan-panel" aria-label="Named patterns">
-                <MultiSelect label="Patterns" placeholder="Patterns" options={catalog} value={selectedPatterns} onChange={setSelectedPatterns} />
+                <MultiSelect label="Patterns" placeholder="Patterns" options={patternOptions} value={selectedPatterns} onChange={setSelectedPatterns} />
                 <Button type="button" disabled={selectedPatterns.length === 0 || scanning} onClick={() => void runNamedScan()}>
                   {scanning ? "Scanning" : "Scan"}
                 </Button>

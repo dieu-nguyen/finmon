@@ -508,6 +508,7 @@ h1, h2, h3 { margin: 0; }
   width: 280px;
   max-height: 320px;
   overflow: auto;
+  overscroll-behavior: contain;
   margin: 0;
   padding: 4px;
   list-style: none;
@@ -543,6 +544,13 @@ h1, h2, h3 { margin: 0; }
 .indicator-option[aria-selected="true"] .indicator-check {
   background: var(--accent);
   border-color: var(--accent);
+}
+.indicator-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .indicator-option[aria-selected="true"] .indicator-option-label { color: var(--accent); }
 .indicator-option.is-active { background: var(--bg-hover); }
