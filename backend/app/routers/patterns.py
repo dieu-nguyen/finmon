@@ -7,6 +7,7 @@ from app.db import get_db
 from app.jobs.pattern_scan import (
     LookalikeScanFailed,
     NamedScanFailed,
+    combined_named,
     latest_named_run,
     trigger_lookalike,
     trigger_named_market,
@@ -198,13 +199,6 @@ def _pattern_of(hit: ScanHit) -> str:
     return pattern if isinstance(pattern, str) else ""
 
 
-def _ordered_hits(db: Session, run: ScanRun) -> list[ScanHit]:
-    rows = list(db.scalars(select(ScanHit).where(ScanHit.run_id == run.id)).all())
-    order = {name: index for index, name in enumerate(PATTERNS)}
-    rows.sort(key=lambda hit: (order.get(_pattern_of(hit), len(PATTERNS)), -hit.score, hit.ticker))
-    return rows
-
-
 def _symbol_names(db: Session, tickers: list[str]) -> dict[str, str]:
     if not tickers:
         return {}
@@ -216,33 +210,37 @@ def pattern_catalog() -> list[CatalogItem]:
     return [CatalogItem(id=name, label=PATTERN_LABELS[name]) for name in PATTERNS]
 
 
+def _named_hit_out(hit: ScanHit, names: dict[str, str]) -> HitOut:
+    return HitOut(
+        ticker=hit.ticker,
+        name=names.get(hit.ticker) or hit.ticker,
+        score=hit.score,
+        window_start=hit.window_start,
+        window_end=hit.window_end,
+        state=hit.state,
+        swings=hit.swings,
+        pattern=_pattern_of(hit) or None,
+        run_id=hit.run_id,
+    )
+
+
 @router.get("/named-scans", response_model=NamedMarketOut)
 def read_named_scan(db: Session = Depends(get_db)) -> NamedMarketOut:
+    view = combined_named(db)
+    hits = [hit for result in view.values() for hit in result.hits]
+    hits.sort(key=lambda hit: (-hit.score, hit.ticker, _pattern_of(hit)))
     run = latest_named_run(db, mode="market")
-    if run is None:
+    if run is None and not hits:
         return NamedMarketOut()
-    req = run.request or {}
+    req = (run.request or {}) if run is not None else {}
     scope = req.get("scope") if req.get("scope") in ("all", "subset") else "all"
-    hits = _ordered_hits(db, run)
     names = _symbol_names(db, [hit.ticker for hit in hits])
     return NamedMarketOut(
-        as_of=run.as_of,
+        as_of=run.as_of if run is not None else None,
         patterns=list(req.get("patterns") or []),
         scope=scope,
         tickers=list(req.get("tickers") or []),
-        hits=[
-            HitOut(
-                ticker=hit.ticker,
-                name=names.get(hit.ticker) or hit.ticker,
-                score=hit.score,
-                window_start=hit.window_start,
-                window_end=hit.window_end,
-                state=hit.state,
-                swings=hit.swings,
-                pattern=_pattern_of(hit) or None,
-            )
-            for hit in hits
-        ],
+        hits=[_named_hit_out(hit, names) for hit in hits],
     )
 
 
@@ -262,13 +260,13 @@ def run_named_scan(body: NamedMarketIn, db: Session = Depends(get_db)) -> NamedM
 @router.get("/symbols/{ticker}/named-patterns", response_model=NamedCheckOut)
 def named_patterns(ticker: str, db: Session = Depends(get_db)) -> NamedCheckOut:
     symbol = ticker.strip().upper()
-    run = latest_named_run(db, mode="ticker", ticker=symbol)
-    if run is None:
+    result = combined_named(db).get(symbol)
+    if result is None:
         return NamedCheckOut(ticker=symbol)
-    req = run.request or {}
+    req = result.run.request or {}
     return NamedCheckOut(
         ticker=symbol,
-        as_of=run.as_of,
+        as_of=result.run.as_of,
         patterns=list(req.get("patterns") or []),
         matches=[
             NamedMatchOut(
@@ -278,9 +276,10 @@ def named_patterns(ticker: str, db: Session = Depends(get_db)) -> NamedCheckOut:
                 window_start=hit.window_start,
                 window_end=hit.window_end,
                 swings=hit.swings or {},
+                run_id=hit.run_id,
             )
-            for hit in _ordered_hits(db, run)
-            if hit.ticker == symbol and _pattern_of(hit)
+            for hit in result.hits
+            if _pattern_of(hit)
         ],
     )
 

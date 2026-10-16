@@ -3,6 +3,8 @@
 Status: accepted
 Date: 2026-10-06
 
+The sentence below that each screen shows its own last stored result is superseded by `docs/adr/0008-mixed-scan-results.md`. Named screens read one combined list.
+
 ## Context
 
 Look-alike was scheduled after the backfill pass that writes the official daily bar (`docs/adr/0005-pattern-compare-job.md`). Named patterns were already manual (`docs/adr/0006-named-pattern-scan.md`). Scoring the universe at the end of backfill, or on the 30-minute poll, walks every eligible name without a request to scan.

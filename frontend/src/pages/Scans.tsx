@@ -244,11 +244,10 @@ export function Scans() {
           <div className="scan-summary">
             {named.patterns.map((id) => patternLabel(id, patternOptions)).join(", ") || "Patterns"} · {scopeText} · as of {named.as_of}
           </div>
+        ) : null}
+        {named.hits.length === 0 ? (
+          <EmptyState text={named.as_of ? "No names at or above the floor" : "No named pattern scan yet"} />
         ) : (
-          <EmptyState text="No named pattern scan yet" />
-        )}
-        {named.as_of && named.hits.length === 0 ? <EmptyState text="No names at or above the floor" /> : null}
-        {named.hits.length > 0 ? (
           <Table className="heads-up">
             <thead>
               <tr>
@@ -258,12 +257,13 @@ export function Scans() {
                 <th>State</th>
                 <th className="num">Score</th>
                 <th>As of</th>
+                <th>Run</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {named.hits.map((hit) => (
-                <tr key={`${hit.ticker}-${hit.pattern ?? ""}`}>
+                <tr key={`${hit.run_id ?? ""}-${hit.ticker}-${hit.pattern ?? ""}`}>
                   <td className="ticker-cell">
                     <Link to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>{hit.ticker}</Link>
                   </td>
@@ -277,6 +277,7 @@ export function Scans() {
                     </span>
                   </td>
                   <td className="ticker-cell">{hit.window_end}</td>
+                  <td className="ticker-cell">{typeof hit.run_id === "number" ? hit.run_id : ""}</td>
                   <td className="center">
                     <Link className="text-btn" to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>
                       Chart
@@ -286,7 +287,7 @@ export function Scans() {
               ))}
             </tbody>
           </Table>
-        ) : null}
+        )}
       </section>
       <section aria-label="Look-alike">
       <h2 className="section-label">Look-alike</h2>
