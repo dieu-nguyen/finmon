@@ -2,6 +2,31 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PATTERN_GUIDE } from "../patterns/catalog";
+
+const IMPLEMENTED = [
+  "double_bottom",
+  "double_top",
+  "head_and_shoulders",
+  "inverse_head_and_shoulders",
+  "triple_top",
+  "triple_bottom",
+  "bull_flag",
+  "bear_flag",
+  "bull_pennant",
+  "bear_pennant",
+  "ascending_triangle",
+  "descending_triangle",
+  "symmetrical_triangle",
+  "cup_and_handle",
+  "rectangle",
+  "rounding_bottom",
+  "rounding_top",
+  "falling_wedge",
+  "rising_wedge",
+  "broadening",
+  "ascending_channel",
+  "descending_channel",
+] as const;
 import { SymbolPage } from "./Symbol";
 
 vi.mock("echarts-for-react", () => ({
@@ -328,7 +353,7 @@ describe("Symbol named-pattern readout", () => {
     });
   });
 
-  it("lists every catalog pattern in the scan filter, including one that cannot be scanned yet", async () => {
+  it("lists all 22 patterns in the scan filter and leaves each one selectable", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo) => {
@@ -347,16 +372,21 @@ describe("Symbol named-pattern readout", () => {
     renderSymbol();
     const scan = openScan();
     fireEvent.click(await scan.findByRole("combobox", { name: "Patterns" }));
-    const optionIds = screen.getAllByRole("option").map((option) => option.id);
-    for (const pattern of PATTERN_GUIDE) {
-      expect(optionIds.some((id) => id.endsWith(`-${pattern.id}`))).toBe(true);
+    const options = () => screen.getAllByRole("option");
+    const optionIds = options().map((option) => option.id);
+    expect(PATTERN_GUIDE.map((pattern) => pattern.id).sort()).toEqual([...IMPLEMENTED].sort());
+    expect(options()).toHaveLength(IMPLEMENTED.length);
+    for (const id of IMPLEMENTED) {
+      const option = options().find((row) => row.id.endsWith(`-${id}`));
+      expect(optionIds.some((optionId) => optionId.endsWith(`-${id}`))).toBe(true);
+      expect(option).toBeTruthy();
+      expect(option).not.toHaveAttribute("aria-disabled");
+      expect(option).not.toHaveTextContent("Not available yet");
     }
-    const blocked = screen.getByRole("option", { name: /Rising wedge/ });
-    expect(blocked).toHaveAttribute("aria-disabled", "true");
-    expect(blocked).toHaveTextContent("Not available yet");
-    fireEvent.click(blocked);
-    expect(blocked).toHaveAttribute("aria-selected", "false");
+    const wedge = screen.getByRole("option", { name: "Rising wedge" });
+    fireEvent.click(wedge);
+    expect(wedge).toHaveAttribute("aria-selected", "true");
     fireEvent.change(scan.getByRole("combobox", { name: "Patterns" }), { target: { value: "" } });
-    expect(screen.getAllByRole("option")).toHaveLength(PATTERN_GUIDE.length);
+    expect(screen.getAllByRole("option")).toHaveLength(IMPLEMENTED.length);
   });
 });

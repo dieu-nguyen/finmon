@@ -2,6 +2,31 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PATTERN_GUIDE } from "../patterns/catalog";
+
+const IMPLEMENTED = [
+  "double_bottom",
+  "double_top",
+  "head_and_shoulders",
+  "inverse_head_and_shoulders",
+  "triple_top",
+  "triple_bottom",
+  "bull_flag",
+  "bear_flag",
+  "bull_pennant",
+  "bear_pennant",
+  "ascending_triangle",
+  "descending_triangle",
+  "symmetrical_triangle",
+  "cup_and_handle",
+  "rectangle",
+  "rounding_bottom",
+  "rounding_top",
+  "falling_wedge",
+  "rising_wedge",
+  "broadening",
+  "ascending_channel",
+  "descending_channel",
+] as const;
 import { Scans } from "./Scans";
 
 const catalog = [
@@ -105,7 +130,7 @@ describe("Scans named patterns", () => {
     expect(posts[0]).toEqual({ patterns: ["double_top"], scope: "subset", tickers: ["VHM"] });
   });
 
-  it("lists every catalog pattern, keeps an unscannable pattern visible, and clears back to the full menu", async () => {
+  it("lists all 22 patterns as selectable and clears back to the full menu", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo) => {
@@ -127,27 +152,27 @@ describe("Scans named patterns", () => {
     fireEvent.click(named.getByRole("combobox", { name: "Patterns" }));
     const menu = () => screen.getByRole("listbox", { name: "Patterns" });
 
-    const optionIds = within(menu()).getAllByRole("option").map((option) => option.id);
-    for (const pattern of PATTERN_GUIDE) {
-      expect(optionIds.some((id) => id.endsWith(`-${pattern.id}`))).toBe(true);
+    const options = () => within(menu()).getAllByRole("option");
+    const optionIds = options().map((option) => option.id);
+    expect(PATTERN_GUIDE.map((pattern) => pattern.id).sort()).toEqual([...IMPLEMENTED].sort());
+    expect(options()).toHaveLength(IMPLEMENTED.length);
+    for (const id of IMPLEMENTED) {
+      const option = options().find((row) => row.id.endsWith(`-${id}`));
+      expect(optionIds.some((optionId) => optionId.endsWith(`-${id}`))).toBe(true);
+      expect(option).toBeTruthy();
+      expect(option).not.toHaveAttribute("aria-disabled");
+      expect(option).not.toHaveTextContent("Not available yet");
     }
 
-    const blocked = within(menu()).getByRole("option", { name: /Bull flag/ });
-    expect(blocked).toHaveAttribute("aria-disabled", "true");
-    expect(blocked).toHaveTextContent("Not available yet");
-    fireEvent.click(blocked);
-    expect(blocked).toHaveAttribute("aria-selected", "false");
-    fireEvent.keyDown(named.getByRole("combobox", { name: "Patterns" }), { key: "Enter" });
-    expect(blocked).toHaveAttribute("aria-selected", "false");
+    const flag = within(menu()).getByRole("option", { name: "Bull flag" });
+    fireEvent.click(flag);
+    expect(flag).toHaveAttribute("aria-selected", "true");
 
     const box = named.getByRole("combobox", { name: "Patterns" });
     fireEvent.change(box, { target: { value: "flag" } });
-    expect(within(menu()).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Bull flagNot available yet",
-      "Bear flagNot available yet",
-    ]);
+    expect(within(menu()).getAllByRole("option").map((option) => option.textContent)).toEqual(["Bull flag", "Bear flag"]);
     fireEvent.change(box, { target: { value: "   " } });
-    expect(within(menu()).getAllByRole("option")).toHaveLength(PATTERN_GUIDE.length);
+    expect(within(menu()).getAllByRole("option")).toHaveLength(IMPLEMENTED.length);
 
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter" });

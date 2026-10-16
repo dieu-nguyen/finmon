@@ -363,5 +363,4 @@ Named patterns:
 - A bond browser on the market list, or a rewrite of the HCX board code.
 - Rule forms, shape drawing, and a weekly run.
 - Changing price-alert delivery.
-- Triangles, flags, and cup and handle in the first named-pattern build.
 - Using look-alike's floor 0.85 as the named-pattern floor. Named patterns use 0.70 and a cap of 20.

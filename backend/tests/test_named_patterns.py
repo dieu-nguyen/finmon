@@ -97,14 +97,30 @@ def test_constants_are_the_locked_named_pattern_defaults():
     assert HEAD_PROMINENCE == 0.03
     assert SCORE_FLOOR == 0.70
     assert HIT_CAP == 20
-    assert PATTERNS[:4] == (
+    assert PATTERNS == (
         "double_bottom",
         "double_top",
         "head_and_shoulders",
         "inverse_head_and_shoulders",
+        "triple_top",
+        "triple_bottom",
+        "bull_flag",
+        "bear_flag",
+        "bull_pennant",
+        "bear_pennant",
+        "ascending_triangle",
+        "descending_triangle",
+        "symmetrical_triangle",
+        "cup_and_handle",
+        "rectangle",
+        "rounding_bottom",
+        "rounding_top",
+        "falling_wedge",
+        "rising_wedge",
+        "broadening",
+        "ascending_channel",
+        "descending_channel",
     )
-    assert len(PATTERNS) >= 20
-    assert len(set(PATTERNS)) == len(PATTERNS)
 
 
 def test_double_bottom_at_the_right_edge_matches_and_an_old_one_does_not():

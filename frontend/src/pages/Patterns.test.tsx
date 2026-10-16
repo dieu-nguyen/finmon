@@ -2,6 +2,31 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PATTERN_GUIDE } from "../patterns/catalog";
+
+const IMPLEMENTED = [
+  "double_bottom",
+  "double_top",
+  "head_and_shoulders",
+  "inverse_head_and_shoulders",
+  "triple_top",
+  "triple_bottom",
+  "bull_flag",
+  "bear_flag",
+  "bull_pennant",
+  "bear_pennant",
+  "ascending_triangle",
+  "descending_triangle",
+  "symmetrical_triangle",
+  "cup_and_handle",
+  "rectangle",
+  "rounding_bottom",
+  "rounding_top",
+  "falling_wedge",
+  "rising_wedge",
+  "broadening",
+  "ascending_channel",
+  "descending_channel",
+] as const;
 import { Patterns } from "./Patterns";
 
 function renderPage() {
@@ -29,15 +54,18 @@ describe("Patterns catalog", () => {
     localStorage.clear();
   });
 
-  it("lists every catalog pattern, including ones that cannot be scanned yet", () => {
+  it("lists all 22 patterns and enables Scan for each of them", () => {
     renderPage();
-    for (const pattern of PATTERN_GUIDE) {
-      expect(screen.getByRole("article", { name: pattern.name })).toBeInTheDocument();
+    expect(PATTERN_GUIDE.map((pattern) => pattern.id).sort()).toEqual([...IMPLEMENTED].sort());
+    for (const id of IMPLEMENTED) {
+      const pattern = PATTERN_GUIDE.find((row) => row.id === id);
+      expect(pattern?.scan).toBe(true);
+      expect(screen.getByRole("article", { name: pattern?.name })).toBeInTheDocument();
+      const button = screen.getByRole("button", { name: `Scan ${pattern?.name}` });
+      expect(button).toBeEnabled();
+      expect(screen.getByRole("article", { name: pattern?.name }).querySelector(".pattern-scan-note")).toBeNull();
     }
-    expect(screen.getByRole("button", { name: "Scan Rising wedge" })).toBeDisabled();
-    expect(screen.getByRole("article", { name: "Rising wedge" }).querySelector(".pattern-scan-note")).toHaveTextContent(
-      "Not available yet",
-    );
+    expect(screen.queryByText("Not available yet")).not.toBeInTheDocument();
   });
 
   it("filters name and description, and an empty query shows the full list", () => {
