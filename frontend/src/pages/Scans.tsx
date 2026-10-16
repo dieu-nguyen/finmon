@@ -5,6 +5,7 @@ import { MultiSelect } from "../components/MultiSelect";
 import { patternLabel, stateLabel } from "../chart/patternMarks";
 import { patternMenuOptions } from "../patterns/catalog";
 import { Banner, Button, Checkbox, EmptyState, Input, Select, Table } from "../design-system";
+import { summarizeNamedHits } from "./namedSummary";
 
 const emptyForm = {
   name: "",
@@ -180,6 +181,7 @@ export function Scans() {
 
   const scanDisabled = pickedPatterns.length === 0 || scanning || (scope === "subset" && pickedTickers.length === 0);
   const scopeText = named.scope === "subset" ? named.tickers.join(", ") || "Subset" : "All tickers";
+  const matchSummary = summarizeNamedHits(named.hits);
 
   return (
     <div>
@@ -245,6 +247,32 @@ export function Scans() {
             {named.patterns.map((id) => patternLabel(id, patternOptions)).join(", ") || "Patterns"} · {scopeText} · as of {named.as_of}
           </div>
         ) : null}
+        <section className="named-summary" aria-label="Pattern match summary">
+          {matchSummary.length === 0 ? (
+            <EmptyState text="No named pattern matches" />
+          ) : (
+            <Table className="heads-up">
+              <thead>
+                <tr>
+                  <th>Pattern</th>
+                  <th className="num">Forming</th>
+                  <th className="num">Confirmed</th>
+                  <th className="num">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matchSummary.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.name}</td>
+                    <td className="num">{row.forming}</td>
+                    <td className="num">{row.confirmed}</td>
+                    <td className="num">{row.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </section>
         {named.hits.length === 0 ? (
           <EmptyState text={named.as_of ? "No names at or above the floor" : "No named pattern scan yet"} />
         ) : (

@@ -102,7 +102,13 @@ describe("Scans named patterns", () => {
     );
 
     expect(await screen.findByRole("link", { name: "VHM" })).toHaveAttribute("href", "/symbol/VHM?pattern=double_bottom");
-    expect(screen.getByText("Forming")).toBeInTheDocument();
+    expect(screen.getAllByText("Forming").length).toBeGreaterThan(0);
+    const summary = within(screen.getByRole("region", { name: "Pattern match summary" }));
+    expect(summary.getByRole("columnheader", { name: "Pattern" })).toBeInTheDocument();
+    expect(summary.getByRole("columnheader", { name: "Confirmed" })).toBeInTheDocument();
+    expect(summary.getByRole("columnheader", { name: "Total" })).toBeInTheDocument();
+    const summaryRow = summary.getByRole("row", { name: /Double bottom/ });
+    expect(within(summaryRow).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["Double bottom", "1", "0", "1"]);
     expect(screen.getByRole("columnheader", { name: "Run" })).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getAllByText("Double bottom").length).toBeGreaterThan(0);
@@ -152,6 +158,9 @@ describe("Scans named patterns", () => {
     );
 
     const named = within(await screen.findByRole("region", { name: "Named pattern scan" }));
+    const summary = within(named.getByRole("region", { name: "Pattern match summary" }));
+    expect(summary.getByText("No named pattern matches")).toBeInTheDocument();
+    expect(summary.queryByRole("columnheader", { name: "Pattern" })).not.toBeInTheDocument();
     fireEvent.click(named.getByRole("combobox", { name: "Patterns" }));
     const menu = () => screen.getByRole("listbox", { name: "Patterns" });
 

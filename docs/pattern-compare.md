@@ -238,6 +238,8 @@ The Scans page has a named-pattern run beside look-alike. You pick patterns from
 
 Scan scores only those patterns on that scope. The page then shows the combined named-result list: every ticker whose newest covering run still has a hit inside the 10-session window. Columns add the pattern, forming or confirmed, and the run id, so two tickers can come from different runs. Hits are sorted by score descending, then ticker. A hit opens that ticker's chart with that pattern drawn. The header can still show the latest market scan's patterns, scope, and as-of date. It does not show a reference ticker.
 
+Above that hit list, the page summarizes those same visible hits: one row per pattern with at least one hit, split into forming and confirmed, plus a total. A symbol in two patterns is counted on each row, the same pattern on one symbol counts once, and rows follow the catalog teaching rank, highest first, then name. Patterns with no visible hit are omitted, and look-alike hits stay out, so an empty named list is an empty state rather than a table of zeros.
+
 Empty when the combined list has no row. That is an empty state, not an error. There is no "reference was not compared" state. Opening the page reads the stored runs and does not scan again.
 
 The floor is 0.70 and the cap is 20 hits per pattern (section 4). The control does not ask for a reference ticker, a minimum score, or a top K.
