@@ -29,6 +29,17 @@ describe("Patterns catalog", () => {
     localStorage.clear();
   });
 
+  it("lists every catalog pattern, including ones that cannot be scanned yet", () => {
+    renderPage();
+    for (const pattern of PATTERN_GUIDE) {
+      expect(screen.getByRole("article", { name: pattern.name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "Scan Rising wedge" })).toBeDisabled();
+    expect(screen.getByRole("article", { name: "Rising wedge" }).querySelector(".pattern-scan-note")).toHaveTextContent(
+      "Not available yet",
+    );
+  });
+
   it("filters name and description, and an empty query shows the full list", () => {
     renderPage();
     expect(names()).toHaveLength(PATTERN_GUIDE.length);

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type NamedScan, type Pattern, type PatternCatalogItem, type PatternHits, type PatternInput, type SymbolRow } from "../api";
 import { MultiSelect } from "../components/MultiSelect";
 import { patternLabel, stateLabel } from "../chart/patternMarks";
+import { patternMenuOptions } from "../patterns/catalog";
 import { Banner, Button, Checkbox, EmptyState, Input, Select, Table } from "../design-system";
 
 const emptyForm = {
@@ -14,16 +15,7 @@ const emptyForm = {
 };
 
 const emptyScan: NamedScan = { as_of: null, patterns: [], scope: "all", tickers: [], hits: [] };
-
-function asCatalog(body: unknown): PatternCatalogItem[] {
-  if (!Array.isArray(body)) return [];
-  return body.flatMap((row) => {
-    if (!row || typeof row !== "object") return [];
-    const item = row as { id?: unknown; label?: unknown };
-    if (typeof item.id !== "string" || typeof item.label !== "string") return [];
-    return [{ id: item.id, label: item.label }];
-  });
-}
+const patternOptions = patternMenuOptions();
 
 function asScan(body: unknown): NamedScan {
   const row = body && typeof body === "object" ? (body as Partial<NamedScan>) : {};
@@ -45,7 +37,6 @@ export function Scans() {
   const [refQ, setRefQ] = useState("");
   const [refHits, setRefHits] = useState<SymbolRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [catalog, setCatalog] = useState<PatternCatalogItem[]>([]);
   const [named, setNamed] = useState<NamedScan>(emptyScan);
   const [pickedPatterns, setPickedPatterns] = useState<string[]>([]);
   const [scope, setScope] = useState<"all" | "subset">("all");
@@ -82,19 +73,19 @@ export function Scans() {
   useEffect(() => {
     loadPatterns().catch(() => setErr("Load error"));
     const ctrl = new AbortController();
-    Promise.allSettled([api.patternCatalog({ signal: ctrl.signal }), api.namedScan({ signal: ctrl.signal })]).then((settled) => {
-      if (ctrl.signal.aborted) return;
-      const catalogResult = settled[0];
-      const scanResult = settled[1];
-      if (catalogResult.status === "fulfilled") setCatalog(asCatalog(catalogResult.value));
-      if (scanResult.status === "fulfilled") {
-        const stored = asScan(scanResult.value);
+    api
+      .namedScan({ signal: ctrl.signal })
+      .then((body) => {
+        if (ctrl.signal.aborted) return;
+        const stored = asScan(body);
         setNamed(stored);
         setPickedPatterns(stored.patterns);
         setScope(stored.scope);
         setPickedTickers(stored.tickers);
-      }
-    });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+      });
     return () => ctrl.abort();
   }, []);
 
@@ -199,7 +190,7 @@ export function Scans() {
       <section className="form-panel" aria-label="Named pattern scan">
         <h2 className="section-label">Named patterns</h2>
         <div className="scan-bar">
-          <MultiSelect label="Patterns" placeholder="Patterns" options={catalog} value={pickedPatterns} onChange={setPickedPatterns} />
+          <MultiSelect label="Patterns" placeholder="Patterns" options={patternOptions} value={pickedPatterns} onChange={setPickedPatterns} />
           <label className="field">
             Tickers
             <Select
@@ -251,7 +242,7 @@ export function Scans() {
         </div>
         {named.as_of ? (
           <div className="scan-summary">
-            {named.patterns.map((id) => patternLabel(id, catalog)).join(", ") || "Patterns"} · {scopeText} · as of {named.as_of}
+            {named.patterns.map((id) => patternLabel(id, patternOptions)).join(", ") || "Patterns"} · {scopeText} · as of {named.as_of}
           </div>
         ) : (
           <EmptyState text="No named pattern scan yet" />
@@ -277,7 +268,7 @@ export function Scans() {
                     <Link to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>{hit.ticker}</Link>
                   </td>
                   <td>{hit.name}</td>
-                  <td>{patternLabel(hit.pattern, catalog)}</td>
+                  <td>{patternLabel(hit.pattern, patternOptions)}</td>
                   <td>{stateLabel(hit.state)}</td>
                   <td className="score-cell">
                     <span className="score-num">{hit.score.toFixed(4)}</span>

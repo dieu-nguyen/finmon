@@ -756,3 +756,12 @@ export function orderPatterns(rows: PatternGuide[], favoriteIds: readonly string
 export function visiblePatterns(query: string, favoriteIds: readonly string[]): PatternGuide[] {
   return orderPatterns(filterPatterns(PATTERN_GUIDE, query), favoriteIds);
 }
+
+/** Same catalog as the Patterns page, in teaching-rank order, for the scan filters. */
+export function patternMenuOptions(): { id: string; label: string; disabled: boolean; reason?: string }[] {
+  return orderPatterns(PATTERN_GUIDE, []).map((row) =>
+    row.scan
+      ? { id: row.id, label: row.name, disabled: false }
+      : { id: row.id, label: row.name, disabled: true, reason: "Not available yet" },
+  );
+}

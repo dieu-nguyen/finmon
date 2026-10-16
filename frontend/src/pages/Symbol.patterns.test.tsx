@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PATTERN_GUIDE } from "../patterns/catalog";
 import { SymbolPage } from "./Symbol";
 
 vi.mock("echarts-for-react", () => ({
@@ -325,5 +326,37 @@ describe("Symbol named-pattern readout", () => {
       expect(marks.some((mark) => mark.coord?.[0] === "2026-09-20")).toBe(true);
       expect(marks.some((mark) => mark.coord?.[0] === "2026-09-18")).toBe(false);
     });
+  });
+
+  it("lists every catalog pattern in the scan filter, including one that cannot be scanned yet", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        if (url.includes("/pattern-catalog")) return json(catalog);
+        if (url.includes("/bars")) return json(bars);
+        if (url.includes("/named-patterns")) return json({ ticker: "VHM", as_of: null, patterns: [], matches: [] });
+        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.endsWith("/page-note")) return json({ body: "" });
+        if (url.endsWith("/drawings")) return json([]);
+        if (url.includes("/indicators")) return json({ dates: ["2026-09-28"] });
+        return json({ ticker: "VHM", name: "Vinhomes", board: "HOSE", type: "stock", listed: true, last: 11, change: 0, volume: 100, watchlist: false });
+      }),
+    );
+
+    renderSymbol();
+    const scan = openScan();
+    fireEvent.click(await scan.findByRole("combobox", { name: "Patterns" }));
+    const optionIds = screen.getAllByRole("option").map((option) => option.id);
+    for (const pattern of PATTERN_GUIDE) {
+      expect(optionIds.some((id) => id.endsWith(`-${pattern.id}`))).toBe(true);
+    }
+    const blocked = screen.getByRole("option", { name: /Rising wedge/ });
+    expect(blocked).toHaveAttribute("aria-disabled", "true");
+    expect(blocked).toHaveTextContent("Not available yet");
+    fireEvent.click(blocked);
+    expect(blocked).toHaveAttribute("aria-selected", "false");
+    fireEvent.change(scan.getByRole("combobox", { name: "Patterns" }), { target: { value: "" } });
+    expect(screen.getAllByRole("option")).toHaveLength(PATTERN_GUIDE.length);
   });
 });

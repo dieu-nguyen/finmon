@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
-export type MultiOption = { id: string; label: string };
+export type MultiOption = { id: string; label: string; disabled?: boolean; reason?: string };
 
 export function MultiSelect({
   label,
@@ -21,6 +21,7 @@ export function MultiSelect({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
   const needle = query.trim().toLowerCase();
@@ -30,12 +31,43 @@ export function MultiSelect({
   const activeId = open && shown[active] ? `${listId}-${shown[active].id}` : undefined;
   const labels = new Map(options.map((item) => [item.id, item.label]));
 
+  useEffect(() => {
+    if (!open) return;
+    const root = rootRef.current;
+    const menu = menuRef.current;
+    if (!root || !menu) return;
+    // Stay inside the nearest clipping ancestor so the menu scrollbar can reach the last row.
+    const fit = () => {
+      let limit = window.innerHeight;
+      let node = root.parentElement;
+      while (node) {
+        const overflow = getComputedStyle(node).overflowY;
+        if (overflow === "auto" || overflow === "hidden" || overflow === "clip" || overflow === "scroll") {
+          limit = Math.min(limit, node.getBoundingClientRect().bottom);
+        }
+        node = node.parentElement;
+      }
+      const space = Math.floor(limit - root.getBoundingClientRect().bottom - 8);
+      menu.style.maxHeight = `${Math.max(96, Math.min(320, space))}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [open, shown.length]);
+
+  useEffect(() => {
+    if (!open || !activeId) return;
+    document.getElementById(activeId)?.scrollIntoView?.({ block: "nearest" });
+  }, [open, activeId]);
+
   function close() {
     setOpen(false);
     setQuery("");
   }
 
   function toggle(id: string) {
+    const option = options.find((item) => item.id === id);
+    if (option?.disabled && !value.includes(id)) return;
     onChange(value.includes(id) ? value.filter((item) => item !== id) : [...value, id]);
   }
 
@@ -173,7 +205,7 @@ export function MultiSelect({
         <span className="indicator-chevron" aria-hidden="true" />
       </div>
       {open ? (
-        <ul className="indicator-menu" id={listId} role="listbox" aria-label={label} aria-multiselectable="true">
+        <ul className="indicator-menu" id={listId} role="listbox" aria-label={label} aria-multiselectable="true" ref={menuRef}>
           {shown.length === 0 ? (
             <li className="indicator-empty" role="presentation">
               {empty}
@@ -181,19 +213,22 @@ export function MultiSelect({
           ) : (
             shown.map((item, index) => {
               const checked = value.includes(item.id);
+              const blocked = Boolean(item.disabled) && !checked;
               return (
                 <li
                   key={item.id}
                   id={`${listId}-${item.id}`}
                   role="option"
                   aria-selected={checked}
-                  className={["indicator-option", index === active ? "is-active" : ""].filter(Boolean).join(" ")}
+                  aria-disabled={blocked || undefined}
+                  className={["indicator-option", index === active ? "is-active" : "", blocked ? "is-disabled" : ""].filter(Boolean).join(" ")}
                   onMouseEnter={() => setActive(index)}
                   onMouseDown={stop}
                   onClick={() => toggle(item.id)}
                 >
                   <span className="indicator-check" aria-hidden="true" />
                   <span className="indicator-option-label">{item.label}</span>
+                  {blocked && item.reason ? <span className="indicator-option-note">{item.reason}</span> : null}
                 </li>
               );
             })
