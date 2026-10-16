@@ -14,7 +14,43 @@ export type PatternMatchSummary = {
   total: number;
 };
 
-/** Counts the named hits already on screen. One symbol and pattern is one hit. */
+export const MATCH_PAGE_SIZE = 20;
+
+export type NamedHitOrder = {
+  ticker: string;
+  score: number;
+  pattern?: string | null;
+  run_id?: number | null;
+};
+
+/** Newest covering run first, then higher score, then ticker. */
+export function orderNamedHits<T extends NamedHitOrder>(hits: readonly T[]): T[] {
+  return [...hits].sort((a, b) => {
+    const runA = typeof a.run_id === "number" ? a.run_id : -1;
+    const runB = typeof b.run_id === "number" ? b.run_id : -1;
+    if (runA !== runB) return runB - runA;
+    if (a.score !== b.score) return b.score - a.score;
+    const ticker = a.ticker.localeCompare(b.ticker);
+    if (ticker !== 0) return ticker;
+    return (a.pattern ?? "").localeCompare(b.pattern ?? "");
+  });
+}
+
+/** Applied match filter. An empty pattern and ticker keeps every hit. */
+export function filterNamedHits<T extends { ticker: string; pattern?: string | null }>(
+  hits: readonly T[],
+  filter: { pattern: string; ticker: string },
+): T[] {
+  const pattern = filter.pattern.trim();
+  const ticker = filter.ticker.trim().toUpperCase();
+  return hits.filter((hit) => {
+    if (pattern && (hit.pattern ?? "") !== pattern) return false;
+    if (ticker && !hit.ticker.toUpperCase().includes(ticker)) return false;
+    return true;
+  });
+}
+
+/** Counts the full combined named-hit list. One symbol and pattern is one hit. */
 export function summarizeNamedHits(hits: readonly NamedHitCount[]): PatternMatchSummary[] {
   const seen = new Set<string>();
   const counts = new Map<string, { forming: number; confirmed: number }>();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeNamedHits } from "./namedSummary";
+import { filterNamedHits, orderNamedHits, summarizeNamedHits } from "./namedSummary";
 
 describe("summarizeNamedHits", () => {
   it("counts each pattern once per symbol and splits forming from confirmed", () => {
@@ -18,5 +18,25 @@ describe("summarizeNamedHits", () => {
 
   it("returns nothing when there are no visible hits", () => {
     expect(summarizeNamedHits([])).toEqual([]);
+  });
+
+  it("orders by run id, then score, then ticker", () => {
+    expect(
+      orderNamedHits([
+        { ticker: "AAA", score: 1, pattern: "double_top", run_id: 2 },
+        { ticker: "MMM", score: 0.8, pattern: "double_bottom", run_id: 10 },
+        { ticker: "T01", score: 0.9, pattern: "double_bottom", run_id: 10 },
+        { ticker: "T00", score: 0.9, pattern: "double_bottom", run_id: 10 },
+      ]).map((hit) => hit.ticker),
+    ).toEqual(["T00", "T01", "MMM", "AAA"]);
+  });
+
+  it("keeps every hit when the match filter is empty", () => {
+    const hits = [
+      { ticker: "VHM", pattern: "double_bottom" },
+      { ticker: "VNM", pattern: "double_top" },
+    ];
+    expect(filterNamedHits(hits, { pattern: "", ticker: "  " })).toEqual(hits);
+    expect(filterNamedHits(hits, { pattern: "double_top", ticker: "vn" }).map((hit) => hit.ticker)).toEqual(["VNM"]);
   });
 });

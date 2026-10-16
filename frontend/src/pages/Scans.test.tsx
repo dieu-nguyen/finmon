@@ -3,6 +3,29 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PATTERN_GUIDE } from "../patterns/catalog";
 
+vi.mock("echarts-for-react", () => ({
+  default: ({
+    option,
+  }: {
+    option: {
+      backgroundColor?: string;
+      legend?: { data?: string[] };
+      xAxis?: { data?: string[] };
+      series?: { name?: string; data?: number[]; itemStyle?: { color?: string } }[];
+    };
+  }) => (
+    <div
+      data-testid="named-summary-chart"
+      data-background={option.backgroundColor ?? ""}
+      data-legend={JSON.stringify(option.legend?.data ?? [])}
+      data-categories={JSON.stringify(option.xAxis?.data ?? [])}
+      data-series={JSON.stringify(
+        (option.series ?? []).map((item) => ({ name: item.name, data: item.data, color: item.itemStyle?.color })),
+      )}
+    />
+  ),
+}));
+
 const IMPLEMENTED = [
   "double_bottom",
   "double_top",
@@ -104,6 +127,20 @@ describe("Scans named patterns", () => {
     expect(await screen.findByRole("link", { name: "VHM" })).toHaveAttribute("href", "/symbol/VHM?pattern=double_bottom");
     expect(screen.getAllByText("Forming").length).toBeGreaterThan(0);
     const summary = within(screen.getByRole("region", { name: "Pattern match summary" }));
+    const named = within(screen.getByRole("region", { name: "Named pattern scan" }));
+    const matches = screen.getByRole("region", { name: "Matches" });
+    expect(summary.getByRole("heading", { name: "Summary" }).compareDocumentPosition(named.getByRole("heading", { name: "Named patterns" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(named.getByRole("heading", { name: "Named patterns" }).compareDocumentPosition(within(matches).getByRole("heading", { name: "Matches" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(named.queryByRole("region", { name: "Pattern match summary" })).not.toBeInTheDocument();
+    expect(summary.getByTestId("named-summary-chart")).toHaveAttribute("data-background", "#0e1116");
+    expect(summary.getByTestId("named-summary-chart")).toHaveAttribute("data-legend", JSON.stringify(["Forming", "Confirmed"]));
+    expect(summary.getByTestId("named-summary-chart")).toHaveAttribute(
+      "data-series",
+      JSON.stringify([
+        { name: "Forming", data: [1], color: "#6ea8fe" },
+        { name: "Confirmed", data: [0], color: "#3dd68c" },
+      ]),
+    );
     expect(summary.getByRole("columnheader", { name: "Pattern" })).toBeInTheDocument();
     expect(summary.getByRole("columnheader", { name: "Confirmed" })).toBeInTheDocument();
     expect(summary.getByRole("columnheader", { name: "Total" })).toBeInTheDocument();
@@ -116,7 +153,6 @@ describe("Scans named patterns", () => {
     expect(calls.filter((call) => call.url.includes("/named-scans")).every((call) => call.method === "GET")).toBe(true);
     expect(screen.queryByRole("link", { name: "Compare" })).not.toBeInTheDocument();
 
-    const named = within(screen.getByRole("region", { name: "Named pattern scan" }));
     const lookalike = within(screen.getByRole("region", { name: "Look-alike" }));
     expect(lookalike.queryByRole("combobox", { name: "Patterns" })).not.toBeInTheDocument();
     expect(lookalike.queryByRole("combobox", { name: "Ticker scope" })).not.toBeInTheDocument();
@@ -158,8 +194,9 @@ describe("Scans named patterns", () => {
     );
 
     const named = within(await screen.findByRole("region", { name: "Named pattern scan" }));
-    const summary = within(named.getByRole("region", { name: "Pattern match summary" }));
+    const summary = within(screen.getByRole("region", { name: "Pattern match summary" }));
     expect(summary.getByText("No named pattern matches")).toBeInTheDocument();
+    expect(summary.queryByTestId("named-summary-chart")).not.toBeInTheDocument();
     expect(summary.queryByRole("columnheader", { name: "Pattern" })).not.toBeInTheDocument();
     fireEvent.click(named.getByRole("combobox", { name: "Patterns" }));
     const menu = () => screen.getByRole("listbox", { name: "Patterns" });
@@ -189,5 +226,157 @@ describe("Scans named patterns", () => {
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(within(menu()).getByRole("option", { name: "Double top" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps summary counts when the match filter changes", async () => {
+    const hits = [
+      {
+        ticker: "VHM",
+        name: "Vinhomes",
+        score: 0.9,
+        window_start: "2026-09-20",
+        window_end: "2026-09-28",
+        state: "forming",
+        pattern: "double_bottom",
+        run_id: 8,
+      },
+      {
+        ticker: "VNM",
+        name: "Vinamilk",
+        score: 0.8,
+        window_start: "2026-09-20",
+        window_end: "2026-09-28",
+        state: "confirmed",
+        pattern: "double_top",
+        run_id: 4,
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        if (url.endsWith("/api/pattern-catalog")) return json(catalog);
+        if (url.endsWith("/api/named-scans")) return json({ as_of: "2026-09-28", patterns: ["double_bottom", "double_top"], scope: "all", tickers: [], hits });
+        if (url.endsWith("/api/patterns")) return json([]);
+        return json({ items: [] });
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <Scans />
+      </MemoryRouter>,
+    );
+
+    const summary = within(await screen.findByRole("region", { name: "Pattern match summary" }));
+    const matches = within(screen.getByRole("region", { name: "Matches" }));
+    const chartSeries = () => summary.getByTestId("named-summary-chart").getAttribute("data-series");
+    const before = chartSeries();
+    expect(summary.getByTestId("named-summary-chart")).toHaveAttribute(
+      "data-categories",
+      JSON.stringify(["Double bottom", "Double top"]),
+    );
+    expect(before).toBe(
+      JSON.stringify([
+        { name: "Forming", data: [1, 0], color: "#6ea8fe" },
+        { name: "Confirmed", data: [0, 1], color: "#3dd68c" },
+      ]),
+    );
+    expect(matches.getByRole("link", { name: "VHM" })).toBeInTheDocument();
+    expect(matches.getByRole("link", { name: "VNM" })).toBeInTheDocument();
+
+    fireEvent.change(matches.getByRole("textbox", { name: "Ticker" }), { target: { value: "VNM" } });
+    expect(matches.getByRole("link", { name: "VHM" })).toBeInTheDocument();
+    expect(chartSeries()).toBe(before);
+
+    fireEvent.click(matches.getByRole("button", { name: "Search" }));
+    expect(matches.queryByRole("link", { name: "VHM" })).not.toBeInTheDocument();
+    expect(matches.getByRole("link", { name: "VNM" })).toHaveAttribute("href", "/symbol/VNM?pattern=double_top");
+    expect(chartSeries()).toBe(before);
+    expect(within(summary.getByRole("row", { name: /Double bottom/ })).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "Double bottom",
+      "1",
+      "0",
+      "1",
+    ]);
+    expect(within(summary.getByRole("row", { name: /Double top/ })).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "Double top",
+      "0",
+      "1",
+      "1",
+    ]);
+  });
+
+  it("pages every current match at 20, newest run first", async () => {
+    const hits = [
+      {
+        ticker: "AAA",
+        name: "Old",
+        score: 1,
+        window_start: "2026-09-20",
+        window_end: "2026-09-28",
+        state: "confirmed",
+        pattern: "double_top",
+        run_id: 2,
+      },
+      {
+        ticker: "MMM",
+        name: "Mid",
+        score: 0.8,
+        window_start: "2026-09-20",
+        window_end: "2026-09-28",
+        state: "forming",
+        pattern: "double_bottom",
+        run_id: 10,
+      },
+    ];
+    for (let i = 18; i >= 0; i -= 1) {
+      hits.push({
+        ticker: `T${String(i).padStart(2, "0")}`,
+        name: "Name",
+        score: 0.9,
+        window_start: "2026-09-20",
+        window_end: "2026-09-28",
+        state: "forming",
+        pattern: "double_bottom",
+        run_id: 10,
+      });
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        if (url.endsWith("/api/pattern-catalog")) return json(catalog);
+        if (url.endsWith("/api/named-scans")) return json({ as_of: "2026-09-28", patterns: ["double_bottom"], scope: "all", tickers: [], hits });
+        if (url.endsWith("/api/patterns")) return json([]);
+        return json({ items: [] });
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <Scans />
+      </MemoryRouter>,
+    );
+
+    const matches = within(await screen.findByRole("region", { name: "Matches" }));
+    const tickers = () =>
+      within(matches.getByRole("table"))
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("link")[0]?.textContent);
+    expect(tickers()).toEqual([...Array.from({ length: 19 }, (_, i) => `T${String(i).padStart(2, "0")}`), "MMM"]);
+    expect(within(matches.getByRole("row", { name: /T00/ })).getByText("10")).toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "AAA" })).not.toBeInTheDocument();
+    expect(matches.getByRole("button", { name: "Next" })).toBeEnabled();
+
+    fireEvent.click(matches.getByRole("button", { name: "Next" }));
+    expect(tickers()).toEqual(["AAA"]);
+    expect(within(matches.getByRole("row", { name: /AAA/ })).getByText("2")).toBeInTheDocument();
+    expect(matches.getByRole("link", { name: "AAA" })).toHaveAttribute("href", "/symbol/AAA?pattern=double_top");
+
+    fireEvent.click(matches.getByRole("button", { name: "Search" }));
+    expect(tickers()[0]).toBe("T00");
+    expect(matches.queryByRole("link", { name: "AAA" })).not.toBeInTheDocument();
   });
 });

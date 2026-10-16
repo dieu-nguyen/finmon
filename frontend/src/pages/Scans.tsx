@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type NamedScan, type Pattern, type PatternCatalogItem, type PatternHits, type PatternInput, type SymbolRow } from "../api";
 import { MultiSelect } from "../components/MultiSelect";
 import { patternLabel, stateLabel } from "../chart/patternMarks";
 import { patternMenuOptions } from "../patterns/catalog";
 import { Banner, Button, Checkbox, EmptyState, Input, Select, Table } from "../design-system";
-import { summarizeNamedHits } from "./namedSummary";
+import { NamedMatchChart } from "./NamedMatchChart";
+import { MATCH_PAGE_SIZE, filterNamedHits, orderNamedHits, summarizeNamedHits } from "./namedSummary";
 
 const emptyForm = {
   name: "",
@@ -46,6 +47,10 @@ export function Scans() {
   const [tickerOptions, setTickerOptions] = useState<PatternCatalogItem[]>([]);
   const [scanning, setScanning] = useState(false);
   const [lookScanning, setLookScanning] = useState(false);
+  const [matchPattern, setMatchPattern] = useState("");
+  const [matchTicker, setMatchTicker] = useState("");
+  const [appliedMatch, setAppliedMatch] = useState({ pattern: "", ticker: "" });
+  const [matchPage, setMatchPage] = useState(0);
 
   const lookalikes = patterns.filter((row) => row.kind !== "named");
   const chosen = lookalikes.find((row) => row.id === selected) ?? null;
@@ -181,7 +186,19 @@ export function Scans() {
 
   const scanDisabled = pickedPatterns.length === 0 || scanning || (scope === "subset" && pickedTickers.length === 0);
   const scopeText = named.scope === "subset" ? named.tickers.join(", ") || "Subset" : "All tickers";
-  const matchSummary = summarizeNamedHits(named.hits);
+  const matchSummary = useMemo(() => summarizeNamedHits(named.hits), [named.hits]);
+  const matchRows = useMemo(() => filterNamedHits(orderNamedHits(named.hits), appliedMatch), [named.hits, appliedMatch]);
+  const matchPageCount = Math.max(1, Math.ceil(matchRows.length / MATCH_PAGE_SIZE));
+  const matchPageIndex = Math.min(matchPage, matchPageCount - 1);
+  const matchPageRows = matchRows.slice(matchPageIndex * MATCH_PAGE_SIZE, matchPageIndex * MATCH_PAGE_SIZE + MATCH_PAGE_SIZE);
+  const matchFrom = matchRows.length === 0 ? 0 : matchPageIndex * MATCH_PAGE_SIZE + 1;
+  const matchTo = matchPageIndex * MATCH_PAGE_SIZE + matchPageRows.length;
+  const patternChoices = patternOptions.filter((item) => !item.disabled);
+
+  function applyMatchSearch() {
+    setAppliedMatch({ pattern: matchPattern, ticker: matchTicker.trim() });
+    setMatchPage(0);
+  }
 
   return (
     <div>
@@ -189,68 +206,13 @@ export function Scans() {
         <h1 className="page-title">Scans</h1>
       </div>
       {err ? <Banner kind="error">{err}</Banner> : null}
-      <section className="form-panel" aria-label="Named pattern scan">
-        <h2 className="section-label">Named patterns</h2>
-        <div className="scan-bar">
-          <MultiSelect label="Patterns" placeholder="Patterns" options={patternOptions} value={pickedPatterns} onChange={setPickedPatterns} />
-          <label className="field">
-            Tickers
-            <Select
-              aria-label="Ticker scope"
-              value={scope}
-              onChange={(event) => setScope(event.target.value === "subset" ? "subset" : "all")}
-              style={{ background: "var(--bg)", minWidth: 140 }}
-            >
-              <option value="all">All tickers</option>
-              <option value="subset">Subset</option>
-            </Select>
-          </label>
-          {scope === "subset" ? (
-            <MultiSelect
-              label="Tickers"
-              placeholder="Search tickers"
-              options={tickerOptions}
-              value={pickedTickers}
-              onChange={setPickedTickers}
-              onQuery={setTickerQuery}
-            />
-          ) : null}
-          <Button
-            type="button"
-            disabled={scanDisabled}
-            onClick={() => {
-              if (scanDisabled) return;
-              setScanning(true);
-              setErr(null);
-              api
-                .runNamedScan({
-                  patterns: pickedPatterns,
-                  scope,
-                  tickers: scope === "subset" ? pickedTickers : [],
-                })
-                .then((body) => {
-                  const stored = asScan(body);
-                  setNamed(stored);
-                  setPickedPatterns(stored.patterns);
-                  setScope(stored.scope);
-                  setPickedTickers(stored.tickers);
-                })
-                .catch(() => setErr("Scan failed"))
-                .finally(() => setScanning(false));
-            }}
-          >
-            {scanning ? "Scanning" : "Scan"}
-          </Button>
-        </div>
-        {named.as_of ? (
-          <div className="scan-summary">
-            {named.patterns.map((id) => patternLabel(id, patternOptions)).join(", ") || "Patterns"} · {scopeText} · as of {named.as_of}
-          </div>
-        ) : null}
-        <section className="named-summary" aria-label="Pattern match summary">
-          {matchSummary.length === 0 ? (
-            <EmptyState text="No named pattern matches" />
-          ) : (
+      <section className="named-summary" aria-label="Pattern match summary">
+        <h2 className="section-label">Summary</h2>
+        {matchSummary.length === 0 ? (
+          <EmptyState text="No named pattern matches" />
+        ) : (
+          <>
+            <NamedMatchChart rows={matchSummary} />
             <Table className="heads-up">
               <thead>
                 <tr>
@@ -271,50 +233,173 @@ export function Scans() {
                 ))}
               </tbody>
             </Table>
-          )}
-        </section>
-        {named.hits.length === 0 ? (
-          <EmptyState text={named.as_of ? "No names at or above the floor" : "No named pattern scan yet"} />
-        ) : (
-          <Table className="heads-up">
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Name</th>
-                <th>Pattern</th>
-                <th>State</th>
-                <th className="num">Score</th>
-                <th>As of</th>
-                <th>Run</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {named.hits.map((hit) => (
-                <tr key={`${hit.run_id ?? ""}-${hit.ticker}-${hit.pattern ?? ""}`}>
-                  <td className="ticker-cell">
-                    <Link to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>{hit.ticker}</Link>
-                  </td>
-                  <td>{hit.name}</td>
-                  <td>{patternLabel(hit.pattern, patternOptions)}</td>
-                  <td>{stateLabel(hit.state)}</td>
-                  <td className="score-cell">
-                    <span className="score-num">{hit.score.toFixed(4)}</span>
-                    <span className="score-bar" aria-hidden="true">
-                      <span style={{ width: `${Math.max(0, Math.min(100, hit.score * 100))}%` }} />
-                    </span>
-                  </td>
-                  <td className="ticker-cell">{hit.window_end}</td>
-                  <td className="ticker-cell">{typeof hit.run_id === "number" ? hit.run_id : ""}</td>
-                  <td className="center">
-                    <Link className="text-btn" to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>
-                      Chart
-                    </Link>
-                  </td>
-                </tr>
+          </>
+        )}
+      </section>
+      <section className="form-panel" aria-label="Named pattern scan">
+        <h2 className="section-label">Named patterns</h2>
+        <div className="scan-bar">
+          <label className="field">
+            Patterns
+            <MultiSelect label="Patterns" placeholder="Patterns" options={patternOptions} value={pickedPatterns} onChange={setPickedPatterns} />
+          </label>
+          <label className="field">
+            Tickers
+            <Select
+              aria-label="Ticker scope"
+              value={scope}
+              onChange={(event) => setScope(event.target.value === "subset" ? "subset" : "all")}
+              style={{ background: "var(--bg)", minWidth: 140 }}
+            >
+              <option value="all">All tickers</option>
+              <option value="subset">Subset</option>
+            </Select>
+          </label>
+          {scope === "subset" ? (
+            <label className="field">
+              Tickers
+              <MultiSelect
+                label="Tickers"
+                placeholder="Search tickers"
+                options={tickerOptions}
+                value={pickedTickers}
+                onChange={setPickedTickers}
+                onQuery={setTickerQuery}
+              />
+            </label>
+          ) : null}
+          <Button
+            type="button"
+            disabled={scanDisabled}
+            onClick={() => {
+              if (scanDisabled) return;
+              setScanning(true);
+              setErr(null);
+              api
+                .runNamedScan({
+                  patterns: pickedPatterns,
+                  scope,
+                  tickers: scope === "subset" ? pickedTickers : [],
+                })
+                .then((body) => {
+                  const stored = asScan(body);
+                  setNamed(stored);
+                  setPickedPatterns(stored.patterns);
+                  setScope(stored.scope);
+                  setPickedTickers(stored.tickers);
+                  setMatchPage(0);
+                })
+                .catch(() => setErr("Scan failed"))
+                .finally(() => setScanning(false));
+            }}
+          >
+            {scanning ? "Scanning" : "Scan"}
+          </Button>
+        </div>
+        {named.as_of ? (
+          <div className="scan-summary">
+            {named.patterns.map((id) => patternLabel(id, patternOptions)).join(", ") || "Patterns"} · {scopeText} · as of {named.as_of}
+          </div>
+        ) : null}
+      </section>
+      <section className="form-panel" aria-label="Matches">
+        <h2 className="section-label">Matches</h2>
+        <form
+          className="scan-bar"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyMatchSearch();
+          }}
+        >
+          <label className="field">
+            Pattern
+            <Select
+              aria-label="Pattern"
+              value={matchPattern}
+              onChange={(event) => setMatchPattern(event.target.value)}
+              style={{ background: "var(--bg)", minWidth: 180 }}
+            >
+              <option value="">All patterns</option>
+              {patternChoices.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
               ))}
-            </tbody>
-          </Table>
+            </Select>
+          </label>
+          <label className="field">
+            Ticker
+            <Input
+              aria-label="Ticker"
+              value={matchTicker}
+              onChange={(event) => setMatchTicker(event.target.value)}
+              style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
+            />
+          </label>
+          <Button type="submit">Search</Button>
+        </form>
+        {matchRows.length === 0 ? (
+          <EmptyState text={named.hits.length === 0 ? (named.as_of ? "No names at or above the floor" : "No named pattern scan yet") : "No matches"} />
+        ) : (
+          <>
+            <Table className="heads-up">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Name</th>
+                  <th>Pattern</th>
+                  <th>State</th>
+                  <th className="num">Score</th>
+                  <th>As of</th>
+                  <th>Run</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {matchPageRows.map((hit) => (
+                  <tr key={`${hit.run_id ?? ""}-${hit.ticker}-${hit.pattern ?? ""}`}>
+                    <td className="ticker-cell">
+                      <Link to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>{hit.ticker}</Link>
+                    </td>
+                    <td>{hit.name}</td>
+                    <td>{patternLabel(hit.pattern, patternOptions)}</td>
+                    <td>{stateLabel(hit.state)}</td>
+                    <td className="score-cell">
+                      <span className="score-num">{hit.score.toFixed(4)}</span>
+                      <span className="score-bar" aria-hidden="true">
+                        <span style={{ width: `${Math.max(0, Math.min(100, hit.score * 100))}%` }} />
+                      </span>
+                    </td>
+                    <td className="ticker-cell">{hit.window_end}</td>
+                    <td className="ticker-cell">{typeof hit.run_id === "number" ? hit.run_id : ""}</td>
+                    <td className="center">
+                      <Link className="text-btn" to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>
+                        Chart
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            <div className="pager">
+              <span>
+                {matchFrom}–{matchTo} of {matchRows.length}
+              </span>
+              <div className="pager-actions">
+                <Button variant="ghost" type="button" disabled={matchPageIndex <= 0} onClick={() => setMatchPage(matchPageIndex - 1)}>
+                  Previous
+                </Button>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  disabled={matchPageIndex + 1 >= matchPageCount}
+                  onClick={() => setMatchPage(matchPageIndex + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </section>
       <section aria-label="Look-alike">
