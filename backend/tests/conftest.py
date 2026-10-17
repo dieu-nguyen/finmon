@@ -31,6 +31,16 @@ def engine():
     return eng
 
 
+@pytest.fixture(autouse=True)
+def _drain_background_scans(db):
+    yield
+    from app.jobs.pattern_scan import wait_background_scans
+
+    wait_background_scans()
+    db.rollback()
+    db.expire_all()
+
+
 @pytest.fixture()
 def db(engine):
     Base.metadata.drop_all(engine)

@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 
 from app.clients.telegram import TelegramSender
+from app.jobs.pattern_scan import wait_background_scans
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun
 from tests.test_named_patterns import _bar, _double_bottom, _ohlc, _series, _window
 from tests.test_pattern_compare import AS_OF, _symbol
@@ -10,6 +11,12 @@ from tests.test_pattern_compare import AS_OF, _symbol
 
 def _quiet(monkeypatch) -> None:
     monkeypatch.setattr(TelegramSender, "send", lambda self, text: True)
+
+
+def _settle(db) -> None:
+    wait_background_scans()
+    db.rollback()
+    db.expire_all()
 
 
 def _hit_fields(row: dict) -> dict:
@@ -35,7 +42,10 @@ def test_market_hits_stay_when_a_ticker_run_adds_another_name(client, db, monkey
 
     market = client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "all"})
     assert market.status_code == 200
-    body = market.json()
+    assert market.json()["status"] == "accepted"
+    assert market.json()["run_id"]
+    _settle(db)
+    body = client.get("/api/named-scans").json()
     assert [hit["ticker"] for hit in body["hits"]] == ["ACV", "XMD"]
     market_run = db.scalars(select(ScanRun).where(ScanRun.status == "ok")).one()
     assert market_run.request["compared"] == ["ACV", "VHM", "XMD"]
@@ -182,7 +192,10 @@ def test_each_symbol_and_pattern_keeps_its_latest_result(client, db, monkeypatch
         json={"patterns": ["double_bottom", "head_and_shoulders"], "scope": "all"},
     )
     assert market.status_code == 200
-    market_hits = market.json()["hits"]
+    assert market.json()["status"] == "accepted"
+    assert market.json()["run_id"]
+    _settle(db)
+    market_hits = client.get("/api/named-scans").json()["hits"]
     assert _pairs(market_hits) == [("ACV", "double_bottom"), ("XMD", "head_and_shoulders")]
     acv_run = next(hit["run_id"] for hit in market_hits if hit["ticker"] == "ACV")
 

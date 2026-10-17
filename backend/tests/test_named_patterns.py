@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.clients.telegram import TelegramSender
 from app.config import Settings
-from app.jobs.pattern_scan import format_named_message, load_windows, run_pattern_scan
+from app.jobs.pattern_scan import format_named_message, load_windows, run_pattern_scan, wait_background_scans
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns import method_for
 from app.patterns.lookalike import MethodResult
@@ -336,6 +336,42 @@ def test_triggered_ticker_scan_is_stored_and_reread_without_detect(client, db, m
     assert sent == []
 
 
+def _settle(db) -> None:
+    wait_background_scans()
+    db.rollback()
+    db.expire_all()
+
+
+def test_market_scan_returns_before_scoring(client, db, monkeypatch):
+    import threading
+
+    db.add(_symbol("VHM"))
+    db.commit()
+    request_thread = threading.get_ident()
+    callers: list[int] = []
+
+    def spy(spec, windows):
+        callers.append(threading.get_ident())
+        return score_named(spec, windows)
+
+    monkeypatch.setattr("app.jobs.pattern_scan.score_named", spy)
+    monkeypatch.setattr(TelegramSender, "send", lambda self, text: True)
+    resp = client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "all"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "accepted"
+    assert isinstance(body["run_id"], int)
+    assert request_thread not in callers
+    _settle(db)
+    assert callers
+    assert all(thread != request_thread for thread in callers)
+    finished = db.get(ScanRun, body["run_id"])
+    assert finished is not None
+    assert finished.status == "ok"
+    assert finished.request["patterns"] == ["double_bottom"]
+    assert finished.request["scope"] == "all"
+
+
 def test_market_subset_does_not_walk_other_tickers(client, db, monkeypatch):
     window = _double_bottom(74, 82, 89)
     db.add(_symbol("VHM", name="Vinhomes"))
@@ -366,9 +402,12 @@ def test_market_subset_does_not_walk_other_tickers(client, db, monkeypatch):
     )
     assert resp.status_code == 200
     body = resp.json()
+    assert body["status"] == "accepted"
     assert body["patterns"] == ["double_bottom", "double_top"]
     assert body["scope"] == "subset"
     assert body["tickers"] == ["VHM"]
+    _settle(db)
+    body = client.get("/api/named-scans").json()
     assert body["hits"]
     assert {hit["ticker"] for hit in body["hits"]} == {"VHM"}
     assert seen
@@ -401,8 +440,10 @@ def test_failed_market_run_keeps_previous_hits_and_skips_telegram(client, db, mo
     monkeypatch.setattr(TelegramSender, "send", send)
     ok = client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "all"})
     assert ok.status_code == 200
+    assert ok.json()["status"] == "accepted"
     assert ok.json()["scope"] == "all"
     assert ok.json()["tickers"] == []
+    _settle(db)
     assert len(sent) == 1
 
     def boom(_spec, _windows):
@@ -410,7 +451,9 @@ def test_failed_market_run_keeps_previous_hits_and_skips_telegram(client, db, mo
 
     monkeypatch.setattr("app.jobs.pattern_scan.score_named", boom)
     failed = client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "all"})
-    assert failed.status_code == 500
+    assert failed.status_code == 200
+    assert failed.json()["status"] == "accepted"
+    _settle(db)
     assert len(sent) == 1
     again = client.get("/api/named-scans")
     assert again.json()["hits"][0]["ticker"] == "VHM"
@@ -431,8 +474,12 @@ def test_failed_named_telegram_keeps_the_ok_run(client, db, monkeypatch):
     monkeypatch.setattr(TelegramSender, "send", boom)
     resp = client.post("/api/named-scans", json={"patterns": ["double_bottom"], "scope": "subset", "tickers": ["vhm"]})
     assert resp.status_code == 200
-    assert resp.json()["hits"][0]["ticker"] == "VHM"
+    assert resp.json()["status"] == "accepted"
     assert resp.json()["tickers"] == ["VHM"]
+    _settle(db)
+    stored = client.get("/api/named-scans").json()
+    assert stored["hits"][0]["ticker"] == "VHM"
+    assert stored["tickers"] == ["VHM"]
     run = db.scalars(select(ScanRun).where(ScanRun.status == "ok")).one()
     assert run.request["tickers"] == ["VHM"]
 

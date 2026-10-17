@@ -113,6 +113,34 @@ def test_wider_search_returns_etf_outside_stock_board(client, db):
     assert wide["items"][0]["type"] == "etf"
 
 
+def test_page_last_prev_and_volume_follow_newest_bars(client, db):
+    db.add(_symbol("SNAP", name="Snapshot"))
+    db.add(_symbol("BARE", name="Bare"))
+    db.add(QuoteSnapshot(ticker="SNAP", last=120, source="dnse"))
+    db.add(_bar("SNAP", date(2026, 9, 1), 80, volume=1))
+    db.add(_bar("SNAP", date(2026, 9, 2), 90, volume=2))
+    db.add(_bar("SNAP", date(2026, 9, 3), 100, volume=7))
+    db.add(_bar("BARE", date(2026, 9, 1), 40, volume=4))
+    db.add(_bar("BARE", date(2026, 9, 2), 45, volume=6))
+    db.add(_bar("BARE", date(2026, 9, 3), 50, volume=5))
+    db.commit()
+
+    rows = {row["ticker"]: row for row in client.get("/api/symbols").json()["items"]}
+    snap = rows["SNAP"]
+    assert snap["last"] == 120
+    assert snap["volume"] == 7
+    assert snap["change"] == (120 - 100) / 100 * 100
+    bare = rows["BARE"]
+    assert bare["last"] == 50
+    assert bare["volume"] == 5
+    assert bare["change"] == (50 - 45) / 45 * 100
+
+    one = client.get("/api/symbols/BARE").json()
+    assert one["last"] == 50
+    assert one["volume"] == 5
+    assert one["change"] == bare["change"]
+
+
 def test_get_symbol_is_one_row(client, db):
     db.add(_symbol("VHM", name="Vinhomes"))
     db.add(QuoteSnapshot(ticker="VHM", last=50000, source="dnse"))

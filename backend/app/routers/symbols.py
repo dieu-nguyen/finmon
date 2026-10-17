@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.bars_window import resolve_window
@@ -64,23 +64,21 @@ def _board_clause(board: str | None):
 
 
 def _latest_two_bars(db: Session, tickers: list[str]) -> dict[str, list[DailyBar]]:
-    ranked = (
-        select(
-            DailyBar.id.label("id"),
-            func.row_number().over(partition_by=DailyBar.ticker, order_by=DailyBar.date.desc()).label("rn"),
-        )
-        .where(DailyBar.ticker.in_(tickers))
-        .subquery()
-    )
-    bars = db.scalars(
-        select(DailyBar)
-        .join(ranked, DailyBar.id == ranked.c.id)
-        .where(ranked.c.rn <= 2)
-        .order_by(DailyBar.ticker, DailyBar.date.desc())
-    ).all()
+    """Two newest bars per ticker. Each lookup is `ORDER BY date DESC LIMIT 2` on `uq_daily_bar_ticker_date`."""
+    if not tickers:
+        return {}
+    parts = [
+        select(DailyBar).where(DailyBar.ticker == ticker).order_by(DailyBar.date.desc()).limit(2) for ticker in tickers
+    ]
+    if len(parts) == 1:
+        bars = list(db.scalars(parts[0]))
+    else:
+        bars = list(db.scalars(select(DailyBar).from_statement(union_all(*parts))))
     grouped: dict[str, list[DailyBar]] = {}
     for bar in bars:
         grouped.setdefault(bar.ticker, []).append(bar)
+    for rows in grouped.values():
+        rows.sort(key=lambda row: row.date, reverse=True)
     return grouped
 
 
