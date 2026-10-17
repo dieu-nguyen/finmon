@@ -66,6 +66,10 @@ function json(body: unknown, ok = true) {
   } as Response);
 }
 
+function namedScanPath(url: string): boolean {
+  return (url.split("?")[0] ?? url).endsWith("/api/named-scans");
+}
+
 describe("Scans named patterns", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -101,11 +105,11 @@ describe("Scans named patterns", () => {
         const method = init?.method ?? "GET";
         calls.push({ url, method });
         if (url.endsWith("/api/pattern-catalog")) return json(catalog);
-        if (url.endsWith("/api/named-scans") && method === "POST") {
+        if (namedScanPath(url) && method === "POST") {
           posts.push(JSON.parse(String(init?.body)));
           return json({ ...stored, patterns: ["double_top"], hits: [] });
         }
-        if (url.endsWith("/api/named-scans")) return json(stored);
+        if (namedScanPath(url)) return json(stored);
         if (url.endsWith("/api/patterns")) return json([]);
         if (url.includes("/api/symbols?")) {
           return json({
@@ -185,13 +189,49 @@ describe("Scans named patterns", () => {
     expect(posts[0]).toEqual({ patterns: ["double_top"], scope: "subset", tickers: ["VHM"] });
   });
 
+  it("does not show named empty copy while the scan request is in flight", async () => {
+    let resolveNamed: (value: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      resolveNamed = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        if (url.endsWith("/api/pattern-catalog")) return json(catalog);
+        if (namedScanPath(url)) return pending;
+        if (url.endsWith("/api/patterns")) return json([]);
+        return json({ items: [] });
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <Scans />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("No named pattern matches")).not.toBeInTheDocument();
+    expect(screen.queryByText("No named pattern scan yet")).not.toBeInTheDocument();
+    expect(await screen.findAllByText("Loading")).not.toHaveLength(0);
+
+    resolveNamed({
+      ok: true,
+      json: async () => ({ as_of: null, patterns: [], scope: "all", tickers: [], hits: [] }),
+    } as Response);
+
+    expect(await screen.findByText("No named pattern matches")).toBeInTheDocument();
+    expect(screen.getByText("No named pattern scan yet")).toBeInTheDocument();
+    expect(screen.queryByText("Loading")).not.toBeInTheDocument();
+  });
+
   it("lists all 22 patterns as selectable and clears back to the full menu", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo) => {
         const url = String(input);
         if (url.endsWith("/api/pattern-catalog")) return json(catalog);
-        if (url.endsWith("/api/named-scans")) return json({ as_of: null, patterns: [], scope: "all", tickers: [], hits: [] });
+        if (namedScanPath(url)) return json({ as_of: null, patterns: [], scope: "all", tickers: [], hits: [] });
         if (url.endsWith("/api/patterns")) return json([]);
         return json({ items: [] });
       }),
@@ -205,7 +245,7 @@ describe("Scans named patterns", () => {
 
     const named = within(await screen.findByRole("region", { name: "Named patterns" }));
     const summary = within(screen.getByRole("region", { name: "Named pattern summary" }));
-    expect(summary.getByText("No named pattern matches")).toBeInTheDocument();
+    expect(await summary.findByText("No named pattern matches")).toBeInTheDocument();
     expect(summary.queryByTestId("named-summary-chart")).not.toBeInTheDocument();
     expect(summary.queryByRole("columnheader", { name: "Pattern" })).not.toBeInTheDocument();
     fireEvent.click(named.getByRole("combobox", { name: "Patterns" }));
@@ -266,7 +306,7 @@ describe("Scans named patterns", () => {
       vi.fn((input: RequestInfo) => {
         const url = String(input);
         if (url.endsWith("/api/pattern-catalog")) return json(catalog);
-        if (url.endsWith("/api/named-scans")) return json({ as_of: "2026-09-28", patterns: ["double_bottom", "double_top"], scope: "all", tickers: [], hits });
+        if (namedScanPath(url)) return json({ as_of: "2026-09-28", patterns: ["double_bottom", "double_top"], scope: "all", tickers: [], hits });
         if (url.endsWith("/api/patterns")) return json([]);
         return json({ items: [] });
       }),
@@ -317,6 +357,124 @@ describe("Scans named patterns", () => {
     ]);
   });
 
+  it("uses state and right edge from Search for the match list and leaves the summary", async () => {
+    const summaryHits = [
+      {
+        ticker: "VHM",
+        name: "Vinhomes",
+        score: 0.9,
+        window_start: "2026-09-20",
+        window_end: "2026-09-28",
+        state: "forming",
+        pattern: "double_bottom",
+        run_id: 8,
+      },
+      {
+        ticker: "VNM",
+        name: "Vinamilk",
+        score: 0.8,
+        window_start: "2026-09-20",
+        window_end: "2026-09-28",
+        state: "confirmed",
+        pattern: "double_top",
+        run_id: 8,
+      },
+      {
+        ticker: "OLD",
+        name: "Aged",
+        score: 0.7,
+        window_start: "2026-09-01",
+        window_end: "2026-09-28",
+        state: "forming",
+        pattern: "double_bottom",
+        run_id: 8,
+      },
+      {
+        ticker: "LATE",
+        name: "Later",
+        score: 0.75,
+        window_start: "2026-09-01",
+        window_end: "2026-09-28",
+        state: "confirmed",
+        pattern: "double_top",
+        run_id: 6,
+      },
+    ];
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        calls.push(url);
+        if (url.endsWith("/api/pattern-catalog")) return json(catalog);
+        if (namedScanPath(url)) {
+          const params = new URLSearchParams(url.split("?")[1] ?? "");
+          if (!params.has("right_edge")) {
+            return json({ as_of: "2026-09-28", patterns: ["double_bottom", "double_top"], scope: "all", tickers: [], hits: summaryHits });
+          }
+          const edge = params.get("right_edge");
+          const state = params.get("state") ?? "all";
+          let hits = summaryHits.filter((hit) => hit.ticker !== "OLD" && hit.ticker !== "LATE");
+          if (edge === "20") hits = summaryHits.filter((hit) => hit.ticker !== "OLD");
+          if (state === "confirmed") hits = hits.filter((hit) => hit.state === "confirmed");
+          return json({ as_of: "2026-09-28", patterns: ["double_bottom", "double_top"], scope: "all", tickers: [], hits });
+        }
+        if (url.endsWith("/api/patterns")) return json([]);
+        return json({ items: [] });
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <Scans />
+      </MemoryRouter>,
+    );
+
+    const summary = within(await screen.findByRole("region", { name: "Named pattern summary" }));
+    const matches = within(screen.getByRole("region", { name: "Named patterns" }));
+    const chartSeries = () => summary.getByTestId("named-summary-chart").getAttribute("data-series");
+    expect(await matches.findByRole("link", { name: "VHM" })).toBeInTheDocument();
+    expect(matches.getByRole("link", { name: "VNM" })).toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "OLD" })).not.toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "LATE" })).not.toBeInTheDocument();
+    expect(matches.getByRole("combobox", { name: "State" })).toHaveValue("all");
+    expect(matches.getByRole("spinbutton", { name: "Right edge" })).toHaveValue(10);
+    expect(summary.queryByRole("combobox", { name: "State" })).not.toBeInTheDocument();
+    expect(summary.queryByRole("spinbutton", { name: "Right edge" })).not.toBeInTheDocument();
+    const lookalike = within(screen.getByRole("region", { name: (value) => value === "Look-alike" }));
+    expect(lookalike.queryByRole("combobox", { name: "State" })).not.toBeInTheDocument();
+    expect(lookalike.queryByRole("spinbutton", { name: "Right edge" })).not.toBeInTheDocument();
+    const before = chartSeries();
+    expect(before).toBe(
+      JSON.stringify([
+        { name: "Forming", data: [2, 0], color: "#6ea8fe" },
+        { name: "Confirmed", data: [0, 2], color: "#3dd68c" },
+      ]),
+    );
+    expect(calls.some((url) => namedScanPath(url) && !url.includes("?"))).toBe(true);
+    expect(calls.some((url) => url.includes("right_edge=10") && !url.includes("state="))).toBe(true);
+
+    fireEvent.change(matches.getByRole("combobox", { name: "State" }), { target: { value: "confirmed" } });
+    fireEvent.change(matches.getByRole("spinbutton", { name: "Right edge" }), { target: { value: "20" } });
+    expect(matches.getByRole("link", { name: "VHM" })).toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "LATE" })).not.toBeInTheDocument();
+    expect(chartSeries()).toBe(before);
+
+    fireEvent.click(matches.getByRole("button", { name: "Search" }));
+    expect(await matches.findByRole("link", { name: "LATE" })).toBeInTheDocument();
+    expect(matches.getByRole("link", { name: "VNM" })).toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "VHM" })).not.toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "OLD" })).not.toBeInTheDocument();
+    expect(calls.some((url) => url.includes("state=confirmed") && url.includes("right_edge=20"))).toBe(true);
+    expect(chartSeries()).toBe(before);
+    expect(within(summary.getByRole("row", { name: /Double bottom/ })).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "Double bottom",
+      "2",
+      "0",
+      "2",
+    ]);
+  });
+
   it("pages every current match at 20, newest run first", async () => {
     const hits = [
       {
@@ -357,7 +515,7 @@ describe("Scans named patterns", () => {
       vi.fn((input: RequestInfo) => {
         const url = String(input);
         if (url.endsWith("/api/pattern-catalog")) return json(catalog);
-        if (url.endsWith("/api/named-scans")) return json({ as_of: "2026-09-28", patterns: ["double_bottom"], scope: "all", tickers: [], hits });
+        if (namedScanPath(url)) return json({ as_of: "2026-09-28", patterns: ["double_bottom"], scope: "all", tickers: [], hits });
         if (url.endsWith("/api/patterns")) return json([]);
         return json({ items: [] });
       }),
@@ -403,7 +561,7 @@ describe("Scans named patterns", () => {
       vi.fn((input: RequestInfo) => {
         const url = String(input);
         if (url.endsWith("/api/pattern-catalog")) return json(catalog);
-        if (url.endsWith("/api/named-scans")) return json({ as_of: null, patterns: [], scope: "all", tickers: [], hits: [] });
+        if (namedScanPath(url)) return json({ as_of: null, patterns: [], scope: "all", tickers: [], hits: [] });
         if (url.endsWith("/api/patterns")) {
           return json([
             {

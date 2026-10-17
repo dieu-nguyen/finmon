@@ -12,7 +12,7 @@ from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns import Hit, MethodResult, method_for
-from app.patterns.named import FRESH_SESSIONS, PATTERN_LABELS, detect, pattern_lookback, score_named
+from app.patterns.named import PATTERN_LABELS, detect, pattern_lookback, score_named
 from app.patterns.windows import Window
 
 WINDOW = 90
@@ -613,70 +613,29 @@ def _swing_pattern(hit: ScanHit) -> str:
     return pattern if isinstance(pattern, str) else ""
 
 
-def _parse_day(value: object) -> date | None:
-    if not isinstance(value, str) or len(value) < 10:
-        return None
-    try:
-        return date.fromisoformat(value[:10])
-    except ValueError:
-        return None
-
-
-def _anchor_date(hit: ScanHit) -> date | None:
-    swings = hit.swings if isinstance(hit.swings, dict) else {}
-    points = swings.get("points") if isinstance(swings.get("points"), list) else []
-    swing_dates = [_parse_day(point.get("date")) for point in points if isinstance(point, dict)]
-    last_swing = max((day for day in swing_dates if day is not None), default=None)
-    confirmed = _parse_day(swings.get("confirmed_on"))
-    candidates = [day for day in (last_swing, confirmed) if day is not None]
-    if not candidates:
-        return None
-    return max(candidates)
-
-
-def _fresh_hits(db: Session, hits: list[ScanHit]) -> list[ScanHit]:
-    if not hits:
-        return []
-    tickers = sorted({hit.ticker for hit in hits})
-    rows = db.execute(select(DailyBar.ticker, DailyBar.date).where(DailyBar.ticker.in_(tickers))).all()
-    dates: dict[str, set[date]] = {}
-    for ticker, day in rows:
-        dates.setdefault(ticker, set()).add(day)
-    kept: list[ScanHit] = []
-    for hit in hits:
-        series = dates.get(hit.ticker)
-        anchor = _anchor_date(hit)
-        if series and anchor is not None:
-            behind = sum(1 for day in series if day > anchor)
-            if behind > FRESH_SESSIONS:
-                continue
-        kept.append(hit)
-    return kept
-
-
-def _covered_tickers(db: Session, run: ScanRun, hit_tickers: set[str], eligible_cache: dict[date, set[str]]) -> set[str]:
+def _covered_tickers(run: ScanRun, hit_tickers: set[str]) -> set[str]:
+    """Tickers this stored run speaks for. Never reads bars."""
     req = run.request or {}
-    mode = req.get("mode")
-    if mode == "ticker" or req.get("scope") == "subset":
-        return _request_tickers(req.get("tickers"))
-    if mode != "market":
-        return set()
     compared = req.get("compared")
     if isinstance(compared, list):
         return _request_tickers(compared)
-    as_of = run.as_of
-    if as_of not in eligible_cache:
-        windows, _eligible = load_windows(db, as_of)
-        eligible_cache[as_of] = set(windows)
-    return set(eligible_cache[as_of]) | hit_tickers
+    mode = req.get("mode")
+    if mode == "ticker" or req.get("scope") == "subset":
+        return _request_tickers(req.get("tickers"))
+    if mode == "market":
+        return set(hit_tickers)
+    return set()
 
 
 def combined_named(db: Session) -> dict[str, NamedTickerResult]:
-    """Latest ok named run for each (ticker, pattern), and the hits still on screen.
+    """Latest ok named run for each (ticker, pattern), from stored rows only.
 
     A run covers a pair when `request.patterns` includes that pattern and the run covered
-    that ticker. The latest covering run supplies the pair. No hit on that run drops the
-    pair, including any older hit. A pattern the run did not select is left alone.
+    that ticker. Coverage is `request.compared` when that list is stored. Otherwise a
+    subset or one-ticker run covers `request.tickers`. A market run with no `compared`
+    list covers only tickers that have hits on that run. The latest covering run supplies
+    the pair. No hit on that run drops the pair, including any older hit. A pattern the
+    run did not select is left alone. Freshness was applied when the hit was stored.
     `run` on each ticker is the newest run that covered it for any selected pattern.
     """
     runs = [
@@ -693,10 +652,9 @@ def combined_named(db: Session) -> dict[str, NamedTickerResult]:
         by_run.setdefault(hit.run_id, []).append(hit)
     assigned: dict[tuple[str, str], list[ScanHit]] = {}
     newest: dict[str, ScanRun] = {}
-    eligible_cache: dict[date, set[str]] = {}
     for run in runs:
         hit_rows = by_run.get(run.id, [])
-        covered = _covered_tickers(db, run, {hit.ticker.strip().upper() for hit in hit_rows}, eligible_cache)
+        covered = _covered_tickers(run, {hit.ticker.strip().upper() for hit in hit_rows})
         patterns = _request_patterns((run.request or {}).get("patterns"))
         if not covered or not patterns:
             continue
@@ -714,10 +672,9 @@ def combined_named(db: Session) -> dict[str, NamedTickerResult]:
                 if key in assigned:
                     continue
                 assigned[key] = list(grouped.get(key, []))
-    fresh_ids = {hit.id for hit in _fresh_hits(db, [hit for rows in assigned.values() for hit in rows])}
     pending: dict[str, list[ScanHit]] = {symbol: [] for symbol in newest}
     for (symbol, _pattern), rows in assigned.items():
-        pending[symbol].extend(hit for hit in rows if hit.id in fresh_ids)
+        pending[symbol].extend(rows)
     view: dict[str, NamedTickerResult] = {}
     for symbol, run in newest.items():
         kept = pending[symbol]
