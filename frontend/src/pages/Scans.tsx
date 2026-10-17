@@ -56,6 +56,7 @@ export function Scans() {
   const [refHits, setRefHits] = useState<SymbolRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [named, setNamed] = useState<NamedScan>(emptyScan);
+  const [namedReady, setNamedReady] = useState(false);
   const [pickedPatterns, setPickedPatterns] = useState<string[]>([]);
   const [scope, setScope] = useState<"all" | "subset">("all");
   const [pickedTickers, setPickedTickers] = useState<string[]>([]);
@@ -110,6 +111,9 @@ export function Scans() {
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === "AbortError") return;
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setNamedReady(true);
       });
     return () => ctrl.abort();
   }, []);
@@ -286,7 +290,9 @@ export function Scans() {
       <section className="summary-band" aria-label="Summary">
         <section className="summary-panel" aria-label="Named pattern summary">
           <h2 className="section-label">Named patterns</h2>
-          {matchSummary.length === 0 ? (
+          {!namedReady ? (
+            <EmptyState text="Loading" />
+          ) : matchSummary.length === 0 ? (
             <EmptyState text="No named pattern matches" />
           ) : (
             <>
@@ -437,7 +443,9 @@ export function Scans() {
           </label>
           <Button type="submit">Search</Button>
         </form>
-        {matchRows.length === 0 ? (
+        {!namedReady ? (
+          <EmptyState text="Loading" />
+        ) : matchRows.length === 0 ? (
           <EmptyState text={named.hits.length === 0 ? (named.as_of ? "No names at or above the floor" : "No named pattern scan yet") : "No matches"} />
         ) : (
           <>

@@ -232,7 +232,7 @@ def _scanned_at(run: ScanRun) -> datetime:
 
 
 def _combined_named_hits(db: Session) -> tuple[dict[str, NamedTickerResult], list[ScanHit], dict[int, datetime]]:
-    """The Scans match list: latest covering result per symbol and pattern, still inside 10 sessions."""
+    """The Scans match list: latest covering result per symbol and pattern, from stored rows."""
     view = combined_named(db)
     hits = [hit for result in view.values() for hit in result.hits]
     hits.sort(key=lambda hit: (-hit.score, hit.ticker, _pattern_of(hit)))

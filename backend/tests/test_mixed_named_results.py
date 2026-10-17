@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.clients.telegram import TelegramSender
 from app.jobs.pattern_scan import wait_background_scans
@@ -248,9 +248,15 @@ def test_each_symbol_and_pattern_keeps_its_latest_result(client, db, monkeypatch
     assert db.scalars(select(ScanHit).where(ScanHit.ticker == "ACV", ScanHit.run_id == acv_run)).all()
 
 
-def test_freshness_hides_a_stored_hit_more_than_ten_sessions_behind(client, db):
+def test_stored_hits_stay_without_counting_sessions_on_read(client, db, engine, monkeypatch):
+    calls = {"windows": 0}
+
+    def windows(*_args, **_kwargs):
+        calls["windows"] += 1
+        return {}, 0
+
+    monkeypatch.setattr("app.jobs.pattern_scan.load_windows", windows)
     days = [date(2026, 1, 1) + timedelta(days=i) for i in range(30)]
-    newest = days[-1]
     pattern = PatternDef(name="Named patterns", kind="named", spec={"manual": True}, schedule="manual", enabled=False)
     db.add(pattern)
     for ticker in ("NEAR", "FAR", "LATE", "GONE"):
@@ -274,21 +280,100 @@ def test_freshness_hides_a_stored_hit_more_than_ten_sessions_behind(client, db):
             ("GONE", 0.7, _swings(days[0], days[18])),
         ],
     )
-    listed = client.get("/api/named-scans").json()["hits"]
-    assert [hit["ticker"] for hit in listed] == ["LATE", "NEAR"]
+    statements: list[str] = []
+
+    def before(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", before)
+    try:
+        listed = client.get("/api/named-scans").json()["hits"]
+        far = client.get("/api/symbols/FAR/named-patterns").json()["matches"]
+    finally:
+        event.remove(engine, "before_cursor_execute", before)
+    assert calls["windows"] == 0
+    assert [hit["ticker"] for hit in listed] == ["LATE", "NEAR", "FAR", "GONE"]
     assert all(hit["run_id"] == run.id for hit in listed)
     near = next(hit for hit in listed if hit["ticker"] == "NEAR")
     symbol = client.get("/api/symbols/NEAR/named-patterns").json()["matches"][0]
     assert symbol["run_id"] == near["run_id"]
     assert symbol["score"] == near["score"]
     assert symbol["pattern"] == near["pattern"]
-    assert client.get("/api/symbols/FAR/named-patterns").json()["matches"] == []
+    assert far[0]["run_id"] == run.id
+    assert far[0]["score"] == 0.8
     stored = {hit.ticker for hit in db.scalars(select(ScanHit).where(ScanHit.run_id == run.id)).all()}
     assert stored == {"NEAR", "FAR", "LATE", "GONE"}
-    assert newest > days[18]
+    assert not any("daily_bar" in statement.lower() for statement in statements)
 
 
-def test_old_market_run_without_compared_covers_only_the_eligible_universe(client, db):
+def test_market_run_without_compared_returns_stored_hits_until_a_later_run_replaces_a_pair(client, db, engine, monkeypatch):
+    calls = {"windows": 0}
+
+    def windows(*_args, **_kwargs):
+        calls["windows"] += 1
+        return {}, 0
+
+    monkeypatch.setattr("app.jobs.pattern_scan.load_windows", windows)
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(30)]
+    pattern = PatternDef(name="Named patterns", kind="named", spec={"manual": True}, schedule="manual", enabled=False)
+    db.add(pattern)
+    for ticker in ("KEEP", "STALE", "DROP"):
+        db.add(_symbol(ticker))
+        db.add_all(_bars(ticker, days))
+    db.commit()
+    legacy = _store(
+        db,
+        pattern,
+        {"mode": "market", "patterns": ["double_bottom"], "scope": "all", "tickers": []},
+        [
+            ("KEEP", 0.9, _swings(days[-2])),
+            ("STALE", 0.8, _swings(days[0])),
+            ("DROP", 0.95, _swings(days[-2])),
+        ],
+    )
+    assert "compared" not in legacy.request
+    newer = _store(
+        db,
+        pattern,
+        {
+            "mode": "market",
+            "patterns": ["double_bottom"],
+            "scope": "all",
+            "tickers": [],
+            "compared": ["DROP"],
+        },
+        [],
+    )
+    statements: list[str] = []
+
+    def before(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", before)
+    try:
+        listed = client.get("/api/named-scans").json()["hits"]
+        kept = client.get("/api/symbols/KEEP/named-patterns").json()["matches"]
+        dropped = client.get("/api/symbols/DROP/named-patterns").json()["matches"]
+    finally:
+        event.remove(engine, "before_cursor_execute", before)
+    assert calls["windows"] == 0
+    assert [hit["ticker"] for hit in listed] == ["KEEP", "STALE"]
+    assert all(hit["run_id"] == legacy.id for hit in listed)
+    assert kept[0]["run_id"] == legacy.id
+    assert kept[0]["score"] == 0.9
+    assert dropped == []
+    assert newer.id != legacy.id
+    assert not any("daily_bar" in statement.lower() for statement in statements)
+
+
+def test_old_market_run_without_compared_covers_only_its_hits(client, db, monkeypatch):
+    calls = {"windows": 0}
+
+    def windows(*_args, **_kwargs):
+        calls["windows"] += 1
+        return {}, 0
+
+    monkeypatch.setattr("app.jobs.pattern_scan.load_windows", windows)
     pattern_window = _double_bottom(74, 82, 89)
     pattern = PatternDef(name="Named patterns", kind="named", spec={"manual": True}, schedule="manual", enabled=False)
     db.add(pattern)
@@ -307,7 +392,7 @@ def test_old_market_run_without_compared_covers_only_the_eligible_universe(clien
         {"mode": "ticker", "patterns": ["double_bottom"], "scope": "ticker", "tickers": ["SHORT"]},
         [("SHORT", 0.9, _swings(AS_OF))],
     )
-    _store(
+    xmd = _store(
         db,
         pattern,
         {"mode": "ticker", "patterns": ["double_bottom"], "scope": "ticker", "tickers": ["XMD"]},
@@ -342,13 +427,15 @@ def test_old_market_run_without_compared_covers_only_the_eligible_universe(clien
     )
     db.commit()
     listed = client.get("/api/named-scans").json()["hits"]
-    assert [hit["ticker"] for hit in listed] == ["SHORT", "ACV", "BOND"]
+    assert [hit["ticker"] for hit in listed] == ["XMD", "SHORT", "ACV", "BOND"]
+    assert calls["windows"] == 0
     by_ticker = {hit["ticker"]: hit for hit in listed}
     assert by_ticker["SHORT"]["run_id"] == short.id
+    assert by_ticker["XMD"]["run_id"] == xmd.id
     assert by_ticker["ACV"]["run_id"] == market.id
     assert by_ticker["BOND"]["run_id"] == market.id
     assert db.scalars(select(ScanHit).where(ScanHit.ticker == "XMD")).all()
-    assert client.get("/api/symbols/XMD/named-patterns").json()["matches"] == []
+    assert client.get("/api/symbols/XMD/named-patterns").json()["matches"][0]["run_id"] == xmd.id
     assert client.get("/api/symbols/ACV/named-patterns").json()["matches"][0]["run_id"] == market.id
 
 

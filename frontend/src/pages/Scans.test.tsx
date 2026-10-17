@@ -185,6 +185,42 @@ describe("Scans named patterns", () => {
     expect(posts[0]).toEqual({ patterns: ["double_top"], scope: "subset", tickers: ["VHM"] });
   });
 
+  it("does not show named empty copy while the scan request is in flight", async () => {
+    let resolveNamed: (value: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      resolveNamed = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        if (url.endsWith("/api/pattern-catalog")) return json(catalog);
+        if (url.endsWith("/api/named-scans")) return pending;
+        if (url.endsWith("/api/patterns")) return json([]);
+        return json({ items: [] });
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <Scans />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("No named pattern matches")).not.toBeInTheDocument();
+    expect(screen.queryByText("No named pattern scan yet")).not.toBeInTheDocument();
+    expect(await screen.findAllByText("Loading")).not.toHaveLength(0);
+
+    resolveNamed({
+      ok: true,
+      json: async () => ({ as_of: null, patterns: [], scope: "all", tickers: [], hits: [] }),
+    } as Response);
+
+    expect(await screen.findByText("No named pattern matches")).toBeInTheDocument();
+    expect(screen.getByText("No named pattern scan yet")).toBeInTheDocument();
+    expect(screen.queryByText("Loading")).not.toBeInTheDocument();
+  });
+
   it("lists all 22 patterns as selectable and clears back to the full menu", async () => {
     vi.stubGlobal(
       "fetch",
@@ -205,7 +241,7 @@ describe("Scans named patterns", () => {
 
     const named = within(await screen.findByRole("region", { name: "Named patterns" }));
     const summary = within(screen.getByRole("region", { name: "Named pattern summary" }));
-    expect(summary.getByText("No named pattern matches")).toBeInTheDocument();
+    expect(await summary.findByText("No named pattern matches")).toBeInTheDocument();
     expect(summary.queryByTestId("named-summary-chart")).not.toBeInTheDocument();
     expect(summary.queryByRole("columnheader", { name: "Pattern" })).not.toBeInTheDocument();
     fireEvent.click(named.getByRole("combobox", { name: "Patterns" }));
