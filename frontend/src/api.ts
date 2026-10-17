@@ -173,6 +173,7 @@ export const api = {
   scanLookalike: (id: number) => req<PatternHits>(`/api/patterns/${id}/scan`, { method: "POST" }),
   patternCatalog: (init?: RequestInit) => req<PatternCatalogItem[]>("/api/pattern-catalog", init),
   namedScan: (init?: RequestInit) => req<NamedScan>("/api/named-scans", init),
+  namedMatchList: (query: string, init?: RequestInit) => req<NamedScan>(`/api/named-scans${query}`, init),
   runNamedScan: (body: { patterns: string[]; scope: "all" | "subset"; tickers?: string[] }) =>
     req<NamedScan>("/api/named-scans", { method: "POST", body: JSON.stringify(body) }),
   namedPatterns: (ticker: string, init?: RequestInit) =>

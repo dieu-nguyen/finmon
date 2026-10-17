@@ -70,16 +70,18 @@ export function summarizeLookalikeHits(hits: readonly LookalikeScore[], limit = 
   };
 }
 
-/** Applied match filter. An empty pattern and ticker keeps every hit. */
-export function filterNamedHits<T extends { ticker: string; pattern?: string | null }>(
+/** Applied match filter. An empty pattern, ticker, and state keeps every hit in this list. */
+export function filterNamedHits<T extends { ticker: string; pattern?: string | null; state?: string | null }>(
   hits: readonly T[],
-  filter: { pattern: string; ticker: string },
+  filter: { pattern: string; ticker: string; state?: string },
 ): T[] {
   const pattern = filter.pattern.trim();
   const ticker = filter.ticker.trim().toUpperCase();
+  const state = (filter.state ?? "all").trim().toLowerCase();
   return hits.filter((hit) => {
     if (pattern && (hit.pattern ?? "") !== pattern) return false;
     if (ticker && !hit.ticker.toUpperCase().includes(ticker)) return false;
+    if ((state === "forming" || state === "confirmed") && (hit.state ?? "") !== state) return false;
     return true;
   });
 }

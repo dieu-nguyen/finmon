@@ -439,6 +439,98 @@ def test_old_market_run_without_compared_covers_only_its_hits(client, db, monkey
     assert client.get("/api/symbols/ACV/named-patterns").json()["matches"][0]["run_id"] == market.id
 
 
+def _listen(engine, statements: list[tuple[str, object]]):
+    def before(_conn, _cursor, statement, parameters, _context, _executemany):
+        statements.append((statement, parameters))
+
+    event.listen(engine, "before_cursor_execute", before)
+    return before
+
+
+def test_match_list_filters_right_edge_and_state_without_load_windows(client, db, engine, monkeypatch):
+    calls = {"windows": 0}
+
+    def windows(*_args, **_kwargs):
+        calls["windows"] += 1
+        return {}, 0
+
+    monkeypatch.setattr("app.jobs.pattern_scan.load_windows", windows)
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(30)]
+    near_day = days[21]
+    far_day = days[18]
+    pattern = PatternDef(name="Named patterns", kind="named", spec={"manual": True}, schedule="manual", enabled=False)
+    db.add(pattern)
+    for ticker in ("NEAR", "FAR", "SURE", "EXTRA"):
+        db.add(_symbol(ticker))
+    db.add_all(_bars("NEAR", days))
+    db.add_all(_bars("FAR", days))
+    db.add_all(_bars("SURE", days))
+    db.add_all(_bars("EXTRA", [date(2026, 1, 1) + timedelta(days=i) for i in range(90)]))
+    db.commit()
+    run = _store(
+        db,
+        pattern,
+        {
+            "mode": "market",
+            "patterns": ["double_bottom"],
+            "scope": "all",
+            "tickers": [],
+            "compared": ["FAR", "NEAR", "SURE"],
+        },
+        [
+            ("NEAR", 0.9, _swings(near_day)),
+            ("FAR", 0.7, _swings(far_day)),
+            ("SURE", 0.8, _swings(far_day, near_day)),
+        ],
+    )
+    statements: list[tuple[str, object]] = []
+    hook = _listen(engine, statements)
+    try:
+        listed = client.get("/api/named-scans").json()["hits"]
+        confirmed = client.get("/api/named-scans", params={"state": "confirmed"}).json()["hits"]
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
+    assert calls["windows"] == 0
+    assert [hit["ticker"] for hit in listed] == ["NEAR", "SURE", "FAR"]
+    assert [hit["ticker"] for hit in confirmed] == ["SURE"]
+    assert not any("daily_bar" in statement.lower() for statement, _params in statements)
+
+    statements.clear()
+    hook = _listen(engine, statements)
+    try:
+        fresh = client.get("/api/named-scans", params={"right_edge": 10}).json()["hits"]
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
+    assert calls["windows"] == 0
+    assert [hit["ticker"] for hit in fresh] == ["NEAR", "SURE"]
+    daily = [(statement, params) for statement, params in statements if "daily_bar" in statement.lower()]
+    assert len(daily) == 1
+    statement, params = daily[0]
+    blob = f"{statement} {params!r}"
+    assert "limit" in statement.lower()
+    assert "open" not in statement.lower()
+    assert "NEAR" in blob and "FAR" in blob and "SURE" in blob
+    assert "EXTRA" not in blob
+    assert {hit.ticker for hit in db.scalars(select(ScanHit).where(ScanHit.run_id == run.id)).all()} == {"NEAR", "FAR", "SURE"}
+
+    statements.clear()
+    hook = _listen(engine, statements)
+    try:
+        wide = client.get("/api/named-scans", params={"right_edge": 20}).json()["hits"]
+        only = client.get("/api/named-scans", params={"right_edge": 10, "state": "confirmed"}).json()["hits"]
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
+    assert calls["windows"] == 0
+    assert [hit["ticker"] for hit in wide] == ["NEAR", "SURE", "FAR"]
+    assert [hit["ticker"] for hit in only] == ["SURE"]
+    confirmed_sql = [(statement, params) for statement, params in statements if "daily_bar" in statement.lower()]
+    assert len(confirmed_sql) == 2
+    state_blob = f"{confirmed_sql[1][0]} {confirmed_sql[1][1]!r}"
+    assert "SURE" in state_blob
+    assert "NEAR" not in state_blob and "FAR" not in state_blob and "EXTRA" not in state_blob
+    assert client.get("/api/symbols/FAR/named-patterns").json()["matches"][0]["score"] == 0.7
+
+
 def test_symbol_keeps_two_patterns_from_two_runs_with_each_run_time(client, db):
     days = [date(2026, 1, 1) + timedelta(days=i) for i in range(20)]
     anchor = days[-3]

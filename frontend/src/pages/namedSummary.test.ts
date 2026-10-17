@@ -38,6 +38,15 @@ describe("summarizeNamedHits", () => {
     ];
     expect(filterNamedHits(hits, { pattern: "", ticker: "  " })).toEqual(hits);
     expect(filterNamedHits(hits, { pattern: "double_top", ticker: "vn" }).map((hit) => hit.ticker)).toEqual(["VNM"]);
+    expect(
+      filterNamedHits(
+        [
+          { ticker: "VHM", pattern: "double_bottom", state: "forming" },
+          { ticker: "VNM", pattern: "double_top", state: "confirmed" },
+        ],
+        { pattern: "", ticker: "", state: "confirmed" },
+      ).map((hit) => hit.ticker),
+    ).toEqual(["VNM"]);
   });
 
   it("summarizes the full look-alike list without forming or confirmed", () => {

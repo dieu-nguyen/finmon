@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type NamedScan, type Pattern, type PatternCatalogItem, type PatternHits, type PatternInput, type SymbolRow } from "../api";
+import { api, type NamedScan, type Pattern, type PatternCatalogItem, type PatternHits, type PatternInput, type ScanHit, type SymbolRow } from "../api";
 import { MultiSelect } from "../components/MultiSelect";
 import { patternLabel, stateLabel } from "../chart/patternMarks";
 import { patternMenuOptions } from "../patterns/catalog";
@@ -27,6 +27,22 @@ const emptyForm = {
 };
 
 const emptyScan: NamedScan = { as_of: null, patterns: [], scope: "all", tickers: [], hits: [] };
+const defaultMatch = { pattern: "", ticker: "", state: "all", rightEdge: 10 };
+
+function matchListQuery(filter: { pattern: string; ticker: string; state: string; rightEdge: number }): string {
+  const params = new URLSearchParams();
+  if (filter.pattern) params.set("pattern", filter.pattern);
+  if (filter.ticker) params.set("ticker", filter.ticker);
+  if (filter.state && filter.state !== "all") params.set("state", filter.state);
+  params.set("right_edge", String(filter.rightEdge));
+  return `?${params.toString()}`;
+}
+
+function parseRightEdge(raw: string): number {
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return defaultMatch.rightEdge;
+  return parsed;
+}
 const patternOptions = patternMenuOptions();
 
 function asScan(body: unknown): NamedScan {
@@ -66,7 +82,10 @@ export function Scans() {
   const [lookScanning, setLookScanning] = useState(false);
   const [matchPattern, setMatchPattern] = useState("");
   const [matchTicker, setMatchTicker] = useState("");
-  const [appliedMatch, setAppliedMatch] = useState({ pattern: "", ticker: "" });
+  const [matchState, setMatchState] = useState(defaultMatch.state);
+  const [matchRightEdge, setMatchRightEdge] = useState(String(defaultMatch.rightEdge));
+  const [appliedMatch, setAppliedMatch] = useState(defaultMatch);
+  const [listedHits, setListedHits] = useState<ScanHit[] | null>(null);
   const [matchPage, setMatchPage] = useState(0);
   const [lookTicker, setLookTicker] = useState("");
   const [appliedLook, setAppliedLook] = useState("");
@@ -136,6 +155,21 @@ export function Scans() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [named.status, named.run_id]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    api
+      .namedMatchList(matchListQuery(appliedMatch), { signal: ctrl.signal })
+      .then((body) => {
+        if (ctrl.signal.aborted) return;
+        setListedHits(asScan(body).hits);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        if (!ctrl.signal.aborted) setListedHits([]);
+      });
+    return () => ctrl.abort();
+  }, [appliedMatch, named.run_id, named.status]);
 
   useEffect(() => {
     if (selected == null || !scanPending(hits?.status)) return;
@@ -256,7 +290,10 @@ export function Scans() {
     () => filterLookalikeHits(orderLookalikeHits(hits?.kind === "named" ? [] : (hits?.hits ?? [])), appliedLook),
     [hits, appliedLook],
   );
-  const matchRows = useMemo(() => filterNamedHits(orderNamedHits(named.hits), appliedMatch), [named.hits, appliedMatch]);
+  const matchRows = useMemo(
+    () => filterNamedHits(orderNamedHits(listedHits ?? []), appliedMatch),
+    [listedHits, appliedMatch],
+  );
   const matchPageCount = Math.max(1, Math.ceil(matchRows.length / MATCH_PAGE_SIZE));
   const matchPageIndex = Math.min(matchPage, matchPageCount - 1);
   const matchPageRows = matchRows.slice(matchPageIndex * MATCH_PAGE_SIZE, matchPageIndex * MATCH_PAGE_SIZE + MATCH_PAGE_SIZE);
@@ -277,7 +314,9 @@ export function Scans() {
         : `${lookSpread.min.toFixed(2)}–${lookSpread.max.toFixed(2)}`;
 
   function applyMatchSearch() {
-    setAppliedMatch({ pattern: matchPattern, ticker: matchTicker.trim() });
+    const rightEdge = parseRightEdge(matchRightEdge);
+    setMatchRightEdge(String(rightEdge));
+    setAppliedMatch({ pattern: matchPattern, ticker: matchTicker.trim(), state: matchState, rightEdge });
     setMatchPage(0);
   }
 
@@ -441,9 +480,34 @@ export function Scans() {
               style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
             />
           </label>
+          <label className="field">
+            State
+            <Select
+              aria-label="State"
+              value={matchState}
+              onChange={(event) => setMatchState(event.target.value)}
+              style={{ background: "var(--bg)", minWidth: 140 }}
+            >
+              <option value="all">All</option>
+              <option value="forming">Forming</option>
+              <option value="confirmed">Confirmed</option>
+            </Select>
+          </label>
+          <label className="field">
+            Right edge
+            <Input
+              aria-label="Right edge"
+              type="number"
+              min={0}
+              step={1}
+              value={matchRightEdge}
+              onChange={(event) => setMatchRightEdge(event.target.value)}
+              style={{ background: "var(--bg)", width: 100, fontFamily: "var(--font-num)" }}
+            />
+          </label>
           <Button type="submit">Search</Button>
         </form>
-        {!namedReady ? (
+        {!namedReady || listedHits == null ? (
           <EmptyState text="Loading" />
         ) : matchRows.length === 0 ? (
           <EmptyState text={named.hits.length === 0 ? (named.as_of ? "No names at or above the floor" : "No named pattern scan yet") : "No matches"} />

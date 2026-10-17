@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, union_all
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -17,7 +18,7 @@ from app.jobs.pattern_scan import (
     latest_named_run,
     trigger_named_ticker,
 )
-from app.models import PatternDef, ScanHit, ScanRun, Symbol
+from app.models import DailyBar, PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns.named import PATTERN_LABELS, PATTERNS
 from app.schemas import (
     CatalogItem,
@@ -259,26 +260,137 @@ def _named_hit_out(hit: ScanHit, names: dict[str, str], scanned_at: datetime | N
     )
 
 
-@router.get("/named-scans", response_model=NamedMarketOut)
-def read_named_scan(db: Session = Depends(get_db)) -> NamedMarketOut:
+def _parse_day(raw: object) -> date | None:
+    if isinstance(raw, datetime):
+        return raw.date()
+    if isinstance(raw, date):
+        return raw
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        return None
+
+
+def _anchor_date(hit: ScanHit) -> date | None:
+    """Last swing, or the confirming close when that close is later."""
+    swings = hit.swings if isinstance(hit.swings, dict) else {}
+    latest: date | None = None
+    points = swings.get("points")
+    if isinstance(points, list):
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            parsed = _parse_day(point.get("date"))
+            if parsed is not None and (latest is None or parsed > latest):
+                latest = parsed
+    confirmed = _parse_day(swings.get("confirmed_on"))
+    if confirmed is not None and (latest is None or confirmed > latest):
+        latest = confirmed
+    return latest
+
+
+def _match_state(raw: str) -> str:
+    state = raw.strip().lower()
+    if state not in ("", "all", "forming", "confirmed"):
+        raise HTTPException(400, "unknown state")
+    return "all" if state in ("", "all") else state
+
+
+def _narrow_hits(hits: list[ScanHit], *, pattern: str, ticker: str, state: str) -> list[ScanHit]:
+    pattern_name = pattern.strip()
+    ticker_q = ticker.strip().upper()
+    kept: list[ScanHit] = []
+    for hit in hits:
+        if pattern_name and _pattern_of(hit) != pattern_name:
+            continue
+        if ticker_q and ticker_q not in hit.ticker.upper():
+            continue
+        if state != "all" and (hit.state or "") != state:
+            continue
+        kept.append(hit)
+    return kept
+
+
+def _newest_dates(db: Session, tickers: list[str], limit: int) -> dict[str, list[date]]:
+    """Newest `limit` dates per ticker. One query, `ORDER BY date DESC LIMIT` on `uq_daily_bar_ticker_date`."""
+    unique = list(dict.fromkeys(ticker.strip().upper() for ticker in tickers if ticker and ticker.strip()))
+    if not unique or limit <= 0:
+        return {}
+    parts = [
+        select(DailyBar.ticker, DailyBar.date)
+        .where(DailyBar.ticker == ticker)
+        .order_by(DailyBar.date.desc())
+        .limit(limit)
+        for ticker in unique
+    ]
+    rows = db.execute(parts[0] if len(parts) == 1 else union_all(*parts)).all()
+    found: dict[str, list[date]] = {}
+    for ticker, day in rows:
+        parsed = _parse_day(day)
+        if parsed is None:
+            continue
+        found.setdefault(str(ticker), []).append(parsed)
+    return found
+
+
+def _within_right_edge(anchor: date | None, newest: list[date], sessions: int) -> bool:
+    if anchor is None:
+        return False
+    # `newest` is at most sessions+1 dates. More than `sessions` of them after the anchor means the hit is further behind.
+    behind = sum(1 for day in newest if day > anchor)
+    return behind <= sessions
+
+
+def _apply_right_edge(db: Session, hits: list[ScanHit], sessions: int) -> list[ScanHit]:
+    dates = _newest_dates(db, [hit.ticker for hit in hits], sessions + 1)
+    return [hit for hit in hits if _within_right_edge(_anchor_date(hit), dates.get(hit.ticker.strip().upper(), []), sessions)]
+
+
+def _read_named_market(
+    db: Session,
+    *,
+    pattern: str = "",
+    ticker: str = "",
+    state: str = "all",
+    right_edge: int | None = None,
+) -> NamedMarketOut:
+    chosen = _match_state(state)
     _view, hits, times = _combined_named_hits(db)
+    narrowed = hits
+    if pattern.strip() or ticker.strip() or chosen != "all":
+        narrowed = _narrow_hits(hits, pattern=pattern, ticker=ticker, state=chosen)
+    if right_edge is not None:
+        narrowed = _apply_right_edge(db, narrowed, right_edge)
     run = latest_named_run(db, mode="market")
     pending = latest_market_run(db)
-    if run is None and pending is None and not hits:
+    if run is None and pending is None and not narrowed and not hits:
         return NamedMarketOut()
     source = pending if pending is not None else run
     req = (source.request or {}) if source is not None else {}
     scope = req.get("scope") if req.get("scope") in ("all", "subset") else "all"
-    names = _symbol_names(db, [hit.ticker for hit in hits])
+    names = _symbol_names(db, [hit.ticker for hit in narrowed])
     return NamedMarketOut(
         as_of=run.as_of if run is not None else None,
         patterns=list(req.get("patterns") or []),
         scope=scope,
         tickers=list(req.get("tickers") or []),
-        hits=[_named_hit_out(hit, names, times.get(hit.run_id)) for hit in hits],
+        hits=[_named_hit_out(hit, names, times.get(hit.run_id)) for hit in narrowed],
         run_id=source.id if source is not None else None,
         status=source.status if source is not None else None,
     )
+
+
+@router.get("/named-scans", response_model=NamedMarketOut)
+def read_named_scan(
+    db: Session = Depends(get_db),
+    pattern: str = "",
+    ticker: str = "",
+    state: str = "all",
+    right_edge: Annotated[int | None, Query(ge=0)] = None,
+) -> NamedMarketOut:
+    return _read_named_market(db, pattern=pattern, ticker=ticker, state=state, right_edge=right_edge)
 
 
 @router.post("/named-scans", response_model=NamedMarketOut)
@@ -288,7 +400,7 @@ def run_named_scan(body: NamedMarketIn, db: Session = Depends(get_db)) -> NamedM
     if body.scope == "subset" and not tickers:
         raise HTTPException(400, "select a ticker")
     accept_named_market(db, patterns, body.scope, tickers, get_settings())
-    return read_named_scan(db)
+    return _read_named_market(db)
 
 
 @router.get("/symbols/{ticker}/named-patterns", response_model=NamedCheckOut)
