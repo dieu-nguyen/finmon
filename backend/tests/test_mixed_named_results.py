@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.clients.telegram import TelegramSender
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun
-from tests.test_named_patterns import _double_bottom, _ohlc, _series, _window
+from tests.test_named_patterns import _bar, _double_bottom, _ohlc, _series, _window
 from tests.test_pattern_compare import AS_OF, _symbol
 
 
@@ -144,6 +144,95 @@ def _store(db, pattern: PatternDef, request: dict, hits: list[tuple[str, float, 
         )
     db.commit()
     return run
+
+
+def _head_and_shoulders():
+    series = _series()
+    _bar(series, 62, 120, 112, 118)
+    _bar(series, 68, 96, 90, 92)
+    _bar(series, 74, 140, 130, 136)
+    _bar(series, 80, 80, 70, 74)
+    _bar(series, 86, 120, 112, 118)
+    return _window(series)
+
+
+def _double_top():
+    series = _series()
+    _bar(series, 74, 130, 120, 125)
+    _bar(series, 82, 96, 90, 92)
+    _bar(series, 89, 130, 120, 125)
+    return _window(series)
+
+
+def _pairs(hits: list[dict]) -> list[tuple[str, str]]:
+    return [(hit["ticker"], hit["pattern"]) for hit in hits]
+
+
+def test_each_symbol_and_pattern_keeps_its_latest_result(client, db, monkeypatch):
+    _quiet(monkeypatch)
+    for ticker, name in (("ACV", "Airports"), ("XMD", "XMD"), ("VHM", "Vinhomes")):
+        db.add(_symbol(ticker, name=name))
+    db.add_all(_ohlc("ACV", _double_bottom(74, 82, 89)))
+    db.add_all(_ohlc("XMD", _head_and_shoulders()))
+    db.add_all(_ohlc("VHM", _window(_series())))
+    db.commit()
+
+    market = client.post(
+        "/api/named-scans",
+        json={"patterns": ["double_bottom", "head_and_shoulders"], "scope": "all"},
+    )
+    assert market.status_code == 200
+    market_hits = market.json()["hits"]
+    assert _pairs(market_hits) == [("ACV", "double_bottom"), ("XMD", "head_and_shoulders")]
+    acv_run = next(hit["run_id"] for hit in market_hits if hit["ticker"] == "ACV")
+
+    for row in list(db.scalars(select(DailyBar).where(DailyBar.ticker == "VHM")).all()):
+        db.delete(row)
+    db.commit()
+    db.add_all(_ohlc("VHM", _double_top()))
+    db.commit()
+    added = client.post("/api/symbols/VHM/named-patterns", json={"patterns": ["double_top"]})
+    assert added.status_code == 200
+    mixed = client.get("/api/named-scans").json()["hits"]
+    assert _pairs(mixed) == [
+        ("ACV", "double_bottom"),
+        ("VHM", "double_top"),
+        ("XMD", "head_and_shoulders"),
+    ]
+    acv = next(hit for hit in mixed if hit["ticker"] == "ACV" and hit["pattern"] == "double_bottom")
+    symbol = client.get("/api/symbols/ACV/named-patterns").json()["matches"]
+    assert len(symbol) == 1
+    match = symbol[0]
+    assert match["pattern"] == acv["pattern"] == "double_bottom"
+    assert match["score"] == acv["score"]
+    assert match["state"] == acv["state"]
+    assert match["run_id"] == acv["run_id"] == acv_run
+    assert match["swings"] == acv["swings"]
+
+    missed = client.post("/api/symbols/ACV/named-patterns", json={"patterns": ["head_and_shoulders"]})
+    assert missed.status_code == 200
+    assert [row["pattern"] for row in missed.json()["matches"]] == ["double_bottom"]
+    assert missed.json()["matches"][0]["run_id"] == acv_run
+    still = client.get("/api/named-scans").json()["hits"]
+    assert _pairs(still) == _pairs(mixed)
+    again = client.get("/api/symbols/ACV/named-patterns").json()["matches"][0]
+    listed = next(hit for hit in still if hit["ticker"] == "ACV")
+    assert again["pattern"] == listed["pattern"] == "double_bottom"
+    assert again["run_id"] == listed["run_id"] == acv_run
+    assert again["swings"] == listed["swings"]
+
+    for row in db.scalars(select(DailyBar).where(DailyBar.ticker == "ACV")).all():
+        row.open = row.high = row.low = row.close = 105
+    db.commit()
+    cleared = client.post("/api/symbols/ACV/named-patterns", json={"patterns": ["double_bottom"]})
+    assert cleared.status_code == 200
+    assert cleared.json()["matches"] == []
+    left = client.get("/api/named-scans").json()["hits"]
+    assert _pairs(left) == [("VHM", "double_top"), ("XMD", "head_and_shoulders")]
+    assert client.get("/api/symbols/ACV/named-patterns").json()["matches"] == []
+    assert client.get("/api/symbols/XMD/named-patterns").json()["matches"][0]["pattern"] == "head_and_shoulders"
+    assert client.get("/api/symbols/VHM/named-patterns").json()["matches"][0]["pattern"] == "double_top"
+    assert db.scalars(select(ScanHit).where(ScanHit.ticker == "ACV", ScanHit.run_id == acv_run)).all()
 
 
 def test_freshness_hides_a_stored_hit_more_than_ten_sessions_behind(client, db):

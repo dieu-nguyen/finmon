@@ -457,6 +457,19 @@ def _request_tickers(raw: object) -> set[str]:
     return {str(item).strip().upper() for item in raw if str(item).strip()}
 
 
+def _request_patterns(raw: object) -> set[str]:
+    if not isinstance(raw, list):
+        return set()
+    found: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        name = item.strip()
+        if name:
+            found.add(name)
+    return found
+
+
 def _swing_pattern(hit: ScanHit) -> str:
     swings = hit.swings if isinstance(hit.swings, dict) else {}
     pattern = swings.get("pattern") if isinstance(swings, dict) else None
@@ -522,7 +535,13 @@ def _covered_tickers(db: Session, run: ScanRun, hit_tickers: set[str], eligible_
 
 
 def combined_named(db: Session) -> dict[str, NamedTickerResult]:
-    """Newest ok named run that covered each ticker, and the hits still on screen."""
+    """Latest ok named run for each (ticker, pattern), and the hits still on screen.
+
+    A run covers a pair when `request.patterns` includes that pattern and the run covered
+    that ticker. The latest covering run supplies the pair. No hit on that run drops the
+    pair, including any older hit. A pattern the run did not select is left alone.
+    `run` on each ticker is the newest run that covered it for any selected pattern.
+    """
     runs = [
         row
         for row in db.scalars(
@@ -535,24 +554,36 @@ def combined_named(db: Session) -> dict[str, NamedTickerResult]:
     by_run: dict[int, list[ScanHit]] = {}
     for hit in db.scalars(select(ScanHit).where(ScanHit.run_id.in_([row.id for row in runs]))).all():
         by_run.setdefault(hit.run_id, []).append(hit)
-    assigned: dict[str, ScanRun] = {}
-    pending: dict[str, list[ScanHit]] = {}
+    assigned: dict[tuple[str, str], list[ScanHit]] = {}
+    newest: dict[str, ScanRun] = {}
     eligible_cache: dict[date, set[str]] = {}
     for run in runs:
         hit_rows = by_run.get(run.id, [])
         covered = _covered_tickers(db, run, {hit.ticker.strip().upper() for hit in hit_rows}, eligible_cache)
-        grouped: dict[str, list[ScanHit]] = {}
+        patterns = _request_patterns((run.request or {}).get("patterns"))
+        if not covered or not patterns:
+            continue
+        grouped: dict[tuple[str, str], list[ScanHit]] = {}
         for hit in hit_rows:
-            grouped.setdefault(hit.ticker.strip().upper(), []).append(hit)
-        for symbol in covered:
-            if symbol in assigned:
+            pattern = _swing_pattern(hit)
+            if pattern not in patterns:
                 continue
-            assigned[symbol] = run
-            pending[symbol] = list(grouped.get(symbol, []))
-    fresh_ids = {hit.id for hit in _fresh_hits(db, [hit for rows in pending.values() for hit in rows])}
+            grouped.setdefault((hit.ticker.strip().upper(), pattern), []).append(hit)
+        for symbol in covered:
+            if symbol not in newest:
+                newest[symbol] = run
+            for pattern in patterns:
+                key = (symbol, pattern)
+                if key in assigned:
+                    continue
+                assigned[key] = list(grouped.get(key, []))
+    fresh_ids = {hit.id for hit in _fresh_hits(db, [hit for rows in assigned.values() for hit in rows])}
+    pending: dict[str, list[ScanHit]] = {symbol: [] for symbol in newest}
+    for (symbol, _pattern), rows in assigned.items():
+        pending[symbol].extend(hit for hit in rows if hit.id in fresh_ids)
     view: dict[str, NamedTickerResult] = {}
-    for symbol, run in assigned.items():
-        kept = [hit for hit in pending[symbol] if hit.id in fresh_ids]
+    for symbol, run in newest.items():
+        kept = pending[symbol]
         kept.sort(key=lambda hit: (-hit.score, hit.ticker, _swing_pattern(hit)))
         view[symbol] = NamedTickerResult(run=run, hits=kept)
     return view
