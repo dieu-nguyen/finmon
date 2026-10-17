@@ -94,6 +94,8 @@ export type PatternHits = {
   reference: string;
   as_of: string | null;
   reference_compared: boolean | null;
+  run_id?: number | null;
+  status?: string | null;
   hits: ScanHit[];
 };
 
@@ -136,6 +138,8 @@ export type NamedScan = {
   scope: "all" | "subset";
   tickers: string[];
   hits: ScanHit[];
+  run_id?: number | null;
+  status?: string | null;
 };
 
 export const api = {

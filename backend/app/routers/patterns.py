@@ -7,10 +7,11 @@ from app.db import get_db
 from app.jobs.pattern_scan import (
     LookalikeScanFailed,
     NamedScanFailed,
+    accept_lookalike,
+    accept_named_market,
     combined_named,
+    latest_market_run,
     latest_named_run,
-    trigger_lookalike,
-    trigger_named_market,
     trigger_named_ticker,
 )
 from app.models import PatternDef, ScanHit, ScanRun, Symbol
@@ -117,8 +118,19 @@ def pattern_hits(pattern_id: int, db: Session = Depends(get_db)) -> HitsOut:
         .order_by(ScanRun.id.desc())
         .limit(1)
     )
+    newest = db.scalar(select(ScanRun).where(ScanRun.pattern_id == pattern.id).order_by(ScanRun.id.desc()).limit(1))
+    run_id = newest.id if newest is not None else None
+    status = newest.status if newest is not None else None
     if run is None:
-        return HitsOut(pattern_id=pattern.id, name=pattern.name, kind=pattern.kind, pattern=pattern_name, reference=reference)
+        return HitsOut(
+            pattern_id=pattern.id,
+            name=pattern.name,
+            kind=pattern.kind,
+            pattern=pattern_name,
+            reference=reference,
+            run_id=run_id,
+            status=status,
+        )
     hits = db.scalars(
         select(ScanHit).where(ScanHit.run_id == run.id).order_by(ScanHit.score.desc(), ScanHit.ticker)
     ).all()
@@ -137,6 +149,8 @@ def pattern_hits(pattern_id: int, db: Session = Depends(get_db)) -> HitsOut:
         reference=reference,
         as_of=run.as_of,
         reference_compared=run.reference_compared,
+        run_id=run_id,
+        status=status,
         hits=[
             HitOut(
                 ticker=hit.ticker,
@@ -163,7 +177,7 @@ def scan_lookalike(pattern_id: int, db: Session = Depends(get_db)) -> HitsOut:
     if not str((pattern.spec or {}).get("reference") or "").strip():
         raise HTTPException(400, "reference is required")
     try:
-        trigger_lookalike(db, pattern.id, get_settings())
+        accept_lookalike(db, pattern.id, get_settings())
     except LookalikeScanFailed:
         raise HTTPException(500, "scan failed") from None
     return pattern_hits(pattern_id, db)
@@ -230,9 +244,11 @@ def read_named_scan(db: Session = Depends(get_db)) -> NamedMarketOut:
     hits = [hit for result in view.values() for hit in result.hits]
     hits.sort(key=lambda hit: (-hit.score, hit.ticker, _pattern_of(hit)))
     run = latest_named_run(db, mode="market")
-    if run is None and not hits:
+    pending = latest_market_run(db)
+    if run is None and pending is None and not hits:
         return NamedMarketOut()
-    req = (run.request or {}) if run is not None else {}
+    source = pending if pending is not None else run
+    req = (source.request or {}) if source is not None else {}
     scope = req.get("scope") if req.get("scope") in ("all", "subset") else "all"
     names = _symbol_names(db, [hit.ticker for hit in hits])
     return NamedMarketOut(
@@ -241,6 +257,8 @@ def read_named_scan(db: Session = Depends(get_db)) -> NamedMarketOut:
         scope=scope,
         tickers=list(req.get("tickers") or []),
         hits=[_named_hit_out(hit, names) for hit in hits],
+        run_id=source.id if source is not None else None,
+        status=source.status if source is not None else None,
     )
 
 
@@ -250,10 +268,7 @@ def run_named_scan(body: NamedMarketIn, db: Session = Depends(get_db)) -> NamedM
     tickers = _chosen_tickers(body.tickers) if body.scope == "subset" else []
     if body.scope == "subset" and not tickers:
         raise HTTPException(400, "select a ticker")
-    try:
-        trigger_named_market(db, patterns, body.scope, tickers, get_settings())
-    except NamedScanFailed:
-        raise HTTPException(500, "scan failed") from None
+    accept_named_market(db, patterns, body.scope, tickers, get_settings())
     return read_named_scan(db)
 
 

@@ -109,7 +109,9 @@ Queries for one page are a fixed set, not one query per ticker, and not a window
 
 1. The symbol page (filter, order, limit) plus a `COUNT` on `symbol` only for `total`. The count uses the same filters, including watchlist, and does not read `daily_bar`.
 2. `quote_snapshot` for those tickers only.
-3. The latest two `daily_bar` rows for those tickers only, using the `(ticker, date)` unique index: `WHERE ticker IN` the page, then the two newest dates.
+3. The latest two `daily_bar` rows for those tickers only.
+
+The latest two bars are an index lookup of 2 rows per ticker on the page, on `uq_daily_bar_ticker_date`, not a window over each ticker's history. Backfill is its own process (`python -m app.jobs.backfill`), and a market scan returns as soon as the run is accepted so that scan does not hold the API request.
 
 `GET /api/symbols/{ticker}` returns one `SymbolRow`, and 404 when the ticker is unknown. The symbol page header uses this. It must not call the list endpoint.
 

@@ -26,7 +26,13 @@ function asScan(body: unknown): NamedScan {
     scope,
     tickers: Array.isArray(row.tickers) ? row.tickers.filter((item): item is string => typeof item === "string") : [],
     hits: Array.isArray(row.hits) ? row.hits : [],
+    run_id: typeof row.run_id === "number" ? row.run_id : null,
+    status: typeof row.status === "string" ? row.status : null,
   };
+}
+
+function scanPending(status: string | null | undefined): boolean {
+  return status === "accepted";
 }
 
 export function Scans() {
@@ -88,6 +94,44 @@ export function Scans() {
       });
     return () => ctrl.abort();
   }, []);
+
+  useEffect(() => {
+    if (!scanPending(named.status)) return;
+    setScanning(true);
+    const timer = window.setInterval(() => {
+      api
+        .namedScan()
+        .then((body) => {
+          const stored = asScan(body);
+          setNamed(stored);
+          if (!scanPending(stored.status)) {
+            setScanning(false);
+            if (stored.status === "failed") setErr("Scan failed");
+          }
+        })
+        .catch(() => undefined);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [named.status, named.run_id]);
+
+  useEffect(() => {
+    if (selected == null || !scanPending(hits?.status)) return;
+    setLookScanning(true);
+    const patternId = selected;
+    const timer = window.setInterval(() => {
+      api
+        .patternHits(patternId)
+        .then((body) => {
+          setHits(body);
+          if (!scanPending(body.status)) {
+            setLookScanning(false);
+            if (body.status === "failed") setErr("Scan failed");
+          }
+        })
+        .catch(() => undefined);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [hits?.status, hits?.run_id, selected]);
 
   useEffect(() => {
     if (selected == null) {
@@ -232,9 +276,12 @@ export function Scans() {
                   setPickedPatterns(stored.patterns);
                   setScope(stored.scope);
                   setPickedTickers(stored.tickers);
+                  if (!scanPending(stored.status)) setScanning(false);
                 })
-                .catch(() => setErr("Scan failed"))
-                .finally(() => setScanning(false));
+                .catch(() => {
+                  setErr("Scan failed");
+                  setScanning(false);
+                });
             }}
           >
             {scanning ? "Scanning" : "Scan"}
@@ -379,9 +426,12 @@ export function Scans() {
                   .then((body) => {
                     setHits(body);
                     setErr(null);
+                    if (!scanPending(body.status)) setLookScanning(false);
                   })
-                  .catch(() => setErr("Scan failed"))
-                  .finally(() => setLookScanning(false));
+                  .catch(() => {
+                    setErr("Scan failed");
+                    setLookScanning(false);
+                  });
               }}
             >
               {lookScanning ? "Scanning" : "Scan"}

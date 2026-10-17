@@ -124,6 +124,8 @@ class HitsOut(BaseModel):
     reference: str = ""
     as_of: date | None = None
     reference_compared: bool | None = None
+    run_id: int | None = None
+    status: str | None = None
     hits: list[HitOut] = Field(default_factory=list)
 
 
@@ -165,3 +167,5 @@ class NamedMarketOut(BaseModel):
     scope: Literal["all", "subset"] = "all"
     tickers: list[str] = Field(default_factory=list)
     hits: list[HitOut] = Field(default_factory=list)
+    run_id: int | None = None
+    status: str | None = None

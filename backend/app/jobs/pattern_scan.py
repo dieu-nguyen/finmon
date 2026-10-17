@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.clients.telegram import TelegramSender
 from app.config import Settings, get_settings
+from app.db import SessionLocal
 from app.models import DailyBar, PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns import Hit, MethodResult, method_for
 from app.patterns.named import FRESH_SESSIONS, PATTERN_LABELS, detect, pattern_lookback, score_named
@@ -15,6 +17,8 @@ from app.patterns.windows import Window
 
 WINDOW = 90
 _BOARDS = ("HOSE", "HNX", "UPCOM", "UPX")
+_SCAN_THREADS: list[threading.Thread] = []
+_SCAN_LOCK = threading.Lock()
 
 
 def _window_from_group(group: list, as_of: date, length: int = WINDOW) -> Window | None:
@@ -125,38 +129,56 @@ def _score_one(
     eligible_count: int,
     as_of: date,
     sender: TelegramSender,
+    existing: ScanRun | None = None,
 ) -> bool:
-    started = _now()
+    started = existing.started_at if existing is not None else _now()
     spec = dict(pattern.spec or {})
     try:
         fn = method_for(pattern.kind)
         result = fn(spec, windows)
     except Exception:
-        db.add(
-            ScanRun(
-                pattern_id=pattern.id,
-                started_at=started,
-                finished_at=_now(),
-                status="failed",
-                eligible_count=eligible_count,
-                compared_count=0,
-                as_of=as_of,
-                reference_compared=False,
+        if existing is None:
+            db.add(
+                ScanRun(
+                    pattern_id=pattern.id,
+                    started_at=started,
+                    finished_at=_now(),
+                    status="failed",
+                    eligible_count=eligible_count,
+                    compared_count=0,
+                    as_of=as_of,
+                    reference_compared=False,
+                )
             )
-        )
+        else:
+            existing.finished_at = _now()
+            existing.status = "failed"
+            existing.eligible_count = eligible_count
+            existing.compared_count = 0
+            existing.as_of = as_of
+            existing.reference_compared = False
         db.commit()
         return False
-    run = ScanRun(
-        pattern_id=pattern.id,
-        started_at=started,
-        finished_at=_now(),
-        status="ok",
-        eligible_count=eligible_count,
-        compared_count=result.compared_count,
-        as_of=as_of,
-        reference_compared=result.reference_compared,
-    )
-    db.add(run)
+    if existing is None:
+        run = ScanRun(
+            pattern_id=pattern.id,
+            started_at=started,
+            finished_at=_now(),
+            status="ok",
+            eligible_count=eligible_count,
+            compared_count=result.compared_count,
+            as_of=as_of,
+            reference_compared=result.reference_compared,
+        )
+        db.add(run)
+    else:
+        run = existing
+        run.finished_at = _now()
+        run.status = "ok"
+        run.eligible_count = eligible_count
+        run.compared_count = result.compared_count
+        run.as_of = as_of
+        run.reference_compared = result.reference_compared
     db.flush()
     for hit in result.hits:
         db.add(
@@ -213,8 +235,43 @@ class LookalikeScanFailed(Exception):
     """Scoring failed after a failed scan_run was stored."""
 
 
-def trigger_lookalike(db: Session, pattern_id: int, settings: Settings | None = None) -> None:
-    """Score one saved look-alike pattern against the eligible universe."""
+def wait_background_scans(timeout: float = 60) -> None:
+    with _SCAN_LOCK:
+        threads = list(_SCAN_THREADS)
+    for thread in threads:
+        thread.join(timeout)
+    with _SCAN_LOCK:
+        _SCAN_THREADS[:] = [thread for thread in _SCAN_THREADS if thread.is_alive()]
+
+
+def _mark_scan_failed(run_id: int) -> None:
+    db = SessionLocal()
+    try:
+        run = db.get(ScanRun, run_id)
+        if run is None or run.status != "accepted":
+            return
+        run.status = "failed"
+        run.finished_at = _now()
+        db.commit()
+    finally:
+        db.close()
+
+
+def _spawn_scan(target) -> None:
+    def runner() -> None:
+        try:
+            target()
+        except Exception:
+            return
+
+    thread = threading.Thread(target=runner, daemon=True)
+    with _SCAN_LOCK:
+        _SCAN_THREADS.append(thread)
+    thread.start()
+
+
+def accept_lookalike(db: Session, pattern_id: int, settings: Settings | None = None) -> int:
+    """Store an accepted look-alike run and score it off the request."""
     settings = settings or get_settings()
     pattern = db.get(PatternDef, pattern_id)
     if pattern is None or pattern.kind != "lookalike" or not pattern.enabled:
@@ -222,32 +279,53 @@ def trigger_lookalike(db: Session, pattern_id: int, settings: Settings | None = 
     reference = str((pattern.spec or {}).get("reference") or "").strip()
     if not reference:
         raise LookalikeScanFailed
-    as_of = _latest_as_of(db, None) or date.today()
+    run = ScanRun(
+        pattern_id=pattern.id,
+        started_at=_now(),
+        finished_at=None,
+        status="accepted",
+        eligible_count=0,
+        compared_count=0,
+        as_of=date.today(),
+        reference_compared=False,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    run_id = run.id
+    _spawn_scan(lambda: execute_lookalike(run_id, settings))
+    return run_id
+
+
+def execute_lookalike(run_id: int, settings: Settings | None = None) -> None:
+    """Score one saved look-alike pattern against the eligible universe."""
+    settings = settings or get_settings()
+    db = SessionLocal()
     try:
-        windows, eligible = load_windows(db, as_of)
+        run = db.get(ScanRun, run_id)
+        if run is None or run.status != "accepted":
+            return
+        pattern = db.get(PatternDef, run.pattern_id)
+        if pattern is None:
+            _mark_scan_failed(run_id)
+            return
+        as_of = _latest_as_of(db, None) or date.today()
+        try:
+            windows, eligible = load_windows(db, as_of)
+        except Exception:
+            db.rollback()
+            _mark_scan_failed(run_id)
+            return
+        sender = TelegramSender(settings.telegram_bot_token, settings.telegram_chat_id)
+        try:
+            _score_one(db, pattern, windows, eligible, as_of, sender, existing=run)
+        finally:
+            sender._client.close()
     except Exception:
         db.rollback()
-        db.add(
-            ScanRun(
-                pattern_id=pattern.id,
-                started_at=_now(),
-                finished_at=_now(),
-                status="failed",
-                eligible_count=0,
-                compared_count=0,
-                as_of=as_of,
-                reference_compared=False,
-            )
-        )
-        db.commit()
-        raise LookalikeScanFailed
-    sender = TelegramSender(settings.telegram_bot_token, settings.telegram_chat_id)
-    try:
-        ok = _score_one(db, pattern, windows, eligible, as_of, sender)
+        _mark_scan_failed(run_id)
     finally:
-        sender._client.close()
-    if not ok:
-        raise LookalikeScanFailed
+        db.close()
 
 
 MANUAL_PATTERN_NAME = "Named patterns"
@@ -341,47 +419,98 @@ def _notify_market(settings: Settings, as_of: date, hits: list[Hit]) -> None:
         sender._client.close()
 
 
-def trigger_named_market(
+def accept_named_market(
     db: Session,
     patterns: list[str],
     scope: str,
     tickers: list[str],
     settings: Settings | None = None,
-) -> None:
+) -> int:
+    """Store an accepted market run and score it off the request."""
     settings = settings or get_settings()
     scope_tickers = list(tickers) if scope == "subset" else []
     request = {"mode": "market", "patterns": list(patterns), "scope": scope, "tickers": scope_tickers}
-    only = scope_tickers if scope == "subset" else None
+    pattern = _manual_pattern(db)
+    run = ScanRun(
+        pattern_id=pattern.id,
+        started_at=_now(),
+        finished_at=None,
+        status="accepted",
+        eligible_count=0,
+        compared_count=0,
+        as_of=date.today(),
+        reference_compared=False,
+        request=request,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    run_id = run.id
+    _spawn_scan(lambda: execute_named_market(run_id, settings))
+    return run_id
+
+
+def execute_named_market(run_id: int, settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
+    db = SessionLocal()
     try:
-        as_of = _latest_as_of(db, only) or date.today()
-        windows, eligible = load_windows(db, as_of, only, max(pattern_lookback(name) for name in patterns))
-        hits: list[Hit] = []
-        for name in patterns:
-            hits.extend(score_named({"pattern": name}, windows).hits)
-        compared = len(windows)
-        request = {**request, "compared": sorted(windows)}
+        run = db.get(ScanRun, run_id)
+        if run is None or run.status != "accepted":
+            return
+        request = dict(run.request or {})
+        patterns = [name for name in request.get("patterns") or [] if isinstance(name, str)]
+        scope = request.get("scope") if request.get("scope") in ("all", "subset") else "all"
+        scope_tickers = [str(ticker) for ticker in request.get("tickers") or []]
+        only = scope_tickers if scope == "subset" else None
+        try:
+            as_of = _latest_as_of(db, only) or date.today()
+            windows, eligible = load_windows(db, as_of, only, max(pattern_lookback(name) for name in patterns))
+            hits: list[Hit] = []
+            for name in patterns:
+                hits.extend(score_named({"pattern": name}, windows).hits)
+            compared = len(windows)
+            request = {**request, "compared": sorted(windows)}
+        except Exception:
+            db.rollback()
+            failed = db.get(ScanRun, run_id)
+            if failed is not None and failed.status == "accepted":
+                failed.status = "failed"
+                failed.finished_at = _now()
+                failed.request = request
+                db.commit()
+            return
+        finished = db.get(ScanRun, run_id)
+        if finished is None:
+            return
+        finished.status = "ok"
+        finished.finished_at = _now()
+        finished.as_of = as_of
+        finished.eligible_count = eligible
+        finished.compared_count = compared
+        finished.request = request
+        finished.reference_compared = False
+        pattern_id = finished.pattern_id
+        db.flush()
+        for hit in hits:
+            db.add(
+                ScanHit(
+                    run_id=finished.id,
+                    pattern_id=pattern_id,
+                    ticker=hit.ticker,
+                    score=hit.score,
+                    window_start=hit.window_start,
+                    window_end=hit.window_end,
+                    swings=hit.swings,
+                    state=hit.state,
+                )
+            )
+        db.commit()
+        _notify_market(settings, as_of, hits)
     except Exception:
         db.rollback()
-        _save_named_run(
-            db,
-            status="failed",
-            as_of=date.today(),
-            eligible=0,
-            compared=0,
-            request=request,
-            hits=[],
-        )
-        raise NamedScanFailed
-    _save_named_run(
-        db,
-        status="ok",
-        as_of=as_of,
-        eligible=eligible,
-        compared=compared,
-        request=request,
-        hits=hits,
-    )
-    _notify_market(settings, as_of, hits)
+        _mark_scan_failed(run_id)
+    finally:
+        db.close()
 
 
 def trigger_named_ticker(db: Session, ticker: str, patterns: list[str]) -> None:
@@ -429,6 +558,14 @@ def trigger_named_ticker(db: Session, ticker: str, patterns: list[str]) -> None:
         request=request,
         hits=hits,
     )
+
+
+def latest_market_run(db: Session) -> ScanRun | None:
+    rows = db.scalars(select(ScanRun).where(ScanRun.request.is_not(None)).order_by(ScanRun.id.desc())).all()
+    for row in rows:
+        if (row.request or {}).get("mode") == "market":
+            return row
+    return None
 
 
 def latest_named_run(db: Session, *, mode: str, ticker: str | None = None) -> ScanRun | None:

@@ -9,7 +9,7 @@ from app.clients.dnse import DnseClient
 from app.clients.telegram import TelegramSender
 from app.config import Settings
 from app.jobs.backfill import EXIT_FATAL, EXIT_LOCK, allows_official_bar, run_once
-from app.jobs.pattern_scan import format_scan_message, load_windows, run_pattern_scan
+from app.jobs.pattern_scan import format_scan_message, load_windows, run_pattern_scan, wait_background_scans
 from app.models import AlertDelivery, DailyBar, PatternDef, ScanHit, ScanRun, Symbol
 from app.patterns import MethodResult, score_lookalike
 from app.patterns.lookalike import _minmax, pearson
@@ -329,7 +329,12 @@ def test_scan_press_scores_one_lookalike(client, db, monkeypatch):
     monkeypatch.setattr(TelegramSender, "send", lambda self, text: sent.append(text) or True)
     scanned = client.post(f"/api/patterns/{saved['id']}/scan")
     assert scanned.status_code == 200
-    body = scanned.json()
+    assert scanned.json()["status"] == "accepted"
+    assert isinstance(scanned.json()["run_id"], int)
+    wait_background_scans()
+    db.rollback()
+    db.expire_all()
+    body = client.get(f"/api/patterns/{saved['id']}/hits").json()
     assert [row["ticker"] for row in body["hits"]] == ["TWIN"]
     assert "REF" not in [row["ticker"] for row in body["hits"]]
     assert body["reference_compared"] is True
@@ -345,11 +350,22 @@ def test_scan_press_scores_one_lookalike(client, db, monkeypatch):
 
     monkeypatch.setattr("app.jobs.pattern_scan.method_for", lambda _kind: boom)
     failed = client.post(f"/api/patterns/{saved['id']}/scan")
-    assert failed.status_code == 500
+    assert failed.status_code == 200
+    assert failed.json()["status"] == "accepted"
+    wait_background_scans()
+    db.rollback()
+    db.expire_all()
     again = client.get(f"/api/patterns/{saved['id']}/hits").json()
     assert [row["ticker"] for row in again["hits"]] == ["TWIN"]
     assert len(sent) == 1
-    assert client.post(f"/api/patterns/{second.json()['id']}/scan").status_code == 500
+    other = client.post(f"/api/patterns/{second.json()['id']}/scan")
+    assert other.status_code == 200
+    assert other.json()["status"] == "accepted"
+    wait_background_scans()
+    db.rollback()
+    db.expire_all()
+    failed_runs = list(db.scalars(select(ScanRun).where(ScanRun.status == "failed")).all())
+    assert {run.pattern_id for run in failed_runs} == {saved["id"], second.json()["id"]}
 
     off = client.put(
         f"/api/patterns/{saved['id']}",
