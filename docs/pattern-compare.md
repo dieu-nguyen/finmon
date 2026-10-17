@@ -1,7 +1,8 @@
 # Pattern compare
 
 Build spec for pattern compare in `docs/product-design.md`.
-Decisions: `docs/adr/0004-hcx-bonds.md`, `docs/adr/0005-pattern-compare-job.md`, `docs/adr/0006-named-pattern-scan.md`, `docs/adr/0007-manual-pattern-scans.md`, and `docs/adr/0008-named-pattern-catalog.md`. ADR 0005 is superseded only for the automatic-after-backfill schedule.
+Decisions: `docs/adr/0004-hcx-bonds.md`, `docs/adr/0005-pattern-compare-job.md`, `docs/adr/0006-named-pattern-scan.md`, `docs/adr/0007-manual-pattern-scans.md`, and `docs/adr/0009-named-pattern-catalog.md`. ADR 0005 is superseded only for the automatic-after-backfill schedule.
+Scans layout and returning before the score finishes: `docs/adr/0010-scans-page-layout.md`, `docs/adr/0012-scan-off-request.md`.
 
 Look-alike is built. Named patterns are built.
 
@@ -98,7 +99,7 @@ The Patterns page introduces this catalog: the shape, a schematic of the ideal f
 
 ### Rest of the catalog
 
-Same kind. Same swing, freshness, floor, and cap. Decision: `docs/adr/0008-named-pattern-catalog.md`.
+Same kind. Same swing, freshness, floor, and cap. Decision: `docs/adr/0009-named-pattern-catalog.md`.
 
 | Pattern | `spec.pattern` | Boundary |
 | --- | --- | --- |

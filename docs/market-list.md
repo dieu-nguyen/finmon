@@ -2,6 +2,7 @@
 
 Build spec for the market list and the chart indicator window in `docs/product-design.md`.
 Decisions: `docs/adr/0002-market-list-page.md` and `docs/adr/0003-indicators-on-read.md`.
+The latest two daily bars are `docs/adr/0011-latest-two-bars.md`.
 Bonds are `type=bond` (`docs/adr/0004-hcx-bonds.md`).
 
 Accepted design, 2026-09-27. Not yet implemented.

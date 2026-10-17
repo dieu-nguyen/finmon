@@ -1,4 +1,4 @@
-# 0008. The named-pattern catalog
+# 0009. The named-pattern catalog
 
 Status: accepted
 Date: 2026-10-10
