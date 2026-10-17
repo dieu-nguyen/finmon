@@ -5,8 +5,17 @@ import { MultiSelect } from "../components/MultiSelect";
 import { patternLabel, stateLabel } from "../chart/patternMarks";
 import { patternMenuOptions } from "../patterns/catalog";
 import { Banner, Button, Checkbox, EmptyState, Input, Select, Table } from "../design-system";
+import { LookalikeScoreChart } from "./LookalikeScoreChart";
 import { NamedMatchChart } from "./NamedMatchChart";
-import { MATCH_PAGE_SIZE, filterNamedHits, orderNamedHits, summarizeNamedHits } from "./namedSummary";
+import {
+  MATCH_PAGE_SIZE,
+  filterLookalikeHits,
+  filterNamedHits,
+  orderLookalikeHits,
+  orderNamedHits,
+  summarizeLookalikeHits,
+  summarizeNamedHits,
+} from "./namedSummary";
 
 const emptyForm = {
   name: "",
@@ -51,6 +60,9 @@ export function Scans() {
   const [matchTicker, setMatchTicker] = useState("");
   const [appliedMatch, setAppliedMatch] = useState({ pattern: "", ticker: "" });
   const [matchPage, setMatchPage] = useState(0);
+  const [lookTicker, setLookTicker] = useState("");
+  const [appliedLook, setAppliedLook] = useState("");
+  const [lookPage, setLookPage] = useState(0);
 
   const lookalikes = patterns.filter((row) => row.kind !== "named");
   const chosen = lookalikes.find((row) => row.id === selected) ?? null;
@@ -182,18 +194,38 @@ export function Scans() {
   function choose(row: Pattern) {
     setSelected(row.id);
     fill(row);
+    setLookTicker("");
+    setAppliedLook("");
+    setLookPage(0);
   }
 
   const scanDisabled = pickedPatterns.length === 0 || scanning || (scope === "subset" && pickedTickers.length === 0);
   const scopeText = named.scope === "subset" ? named.tickers.join(", ") || "Subset" : "All tickers";
   const matchSummary = useMemo(() => summarizeNamedHits(named.hits), [named.hits]);
+  const lookSpread = useMemo(() => summarizeLookalikeHits(hits?.kind === "named" ? [] : (hits?.hits ?? [])), [hits]);
+  const lookRows = useMemo(
+    () => filterLookalikeHits(orderLookalikeHits(hits?.kind === "named" ? [] : (hits?.hits ?? [])), appliedLook),
+    [hits, appliedLook],
+  );
   const matchRows = useMemo(() => filterNamedHits(orderNamedHits(named.hits), appliedMatch), [named.hits, appliedMatch]);
   const matchPageCount = Math.max(1, Math.ceil(matchRows.length / MATCH_PAGE_SIZE));
   const matchPageIndex = Math.min(matchPage, matchPageCount - 1);
   const matchPageRows = matchRows.slice(matchPageIndex * MATCH_PAGE_SIZE, matchPageIndex * MATCH_PAGE_SIZE + MATCH_PAGE_SIZE);
   const matchFrom = matchRows.length === 0 ? 0 : matchPageIndex * MATCH_PAGE_SIZE + 1;
   const matchTo = matchPageIndex * MATCH_PAGE_SIZE + matchPageRows.length;
+  const lookPageCount = Math.max(1, Math.ceil(lookRows.length / MATCH_PAGE_SIZE));
+  const lookPageIndex = Math.min(lookPage, lookPageCount - 1);
+  const lookPageRows = lookRows.slice(lookPageIndex * MATCH_PAGE_SIZE, lookPageIndex * MATCH_PAGE_SIZE + MATCH_PAGE_SIZE);
+  const lookFrom = lookRows.length === 0 ? 0 : lookPageIndex * MATCH_PAGE_SIZE + 1;
+  const lookTo = lookPageIndex * MATCH_PAGE_SIZE + lookPageRows.length;
   const patternChoices = patternOptions.filter((item) => !item.disabled);
+  const lookResult = hits != null && hits.kind !== "named" ? hits : null;
+  const lookSpreadText =
+    lookSpread.min == null || lookSpread.max == null
+      ? null
+      : lookSpread.min === lookSpread.max
+        ? lookSpread.max.toFixed(2)
+        : `${lookSpread.min.toFixed(2)}–${lookSpread.max.toFixed(2)}`;
 
   function applyMatchSearch() {
     setAppliedMatch({ pattern: matchPattern, ticker: matchTicker.trim() });
@@ -206,37 +238,59 @@ export function Scans() {
         <h1 className="page-title">Scans</h1>
       </div>
       {err ? <Banner kind="error">{err}</Banner> : null}
-      <section className="named-summary" aria-label="Pattern match summary">
-        <h2 className="section-label">Summary</h2>
-        {matchSummary.length === 0 ? (
-          <EmptyState text="No named pattern matches" />
-        ) : (
-          <>
-            <NamedMatchChart rows={matchSummary} />
-            <Table className="heads-up">
-              <thead>
-                <tr>
-                  <th>Pattern</th>
-                  <th className="num">Forming</th>
-                  <th className="num">Confirmed</th>
-                  <th className="num">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matchSummary.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.name}</td>
-                    <td className="num">{row.forming}</td>
-                    <td className="num">{row.confirmed}</td>
-                    <td className="num">{row.total}</td>
+      <section className="summary-band" aria-label="Summary">
+        <section className="summary-panel" aria-label="Named pattern summary">
+          <h2 className="section-label">Named patterns</h2>
+          {matchSummary.length === 0 ? (
+            <EmptyState text="No named pattern matches" />
+          ) : (
+            <>
+              <NamedMatchChart rows={matchSummary} />
+              <Table className="heads-up">
+                <thead>
+                  <tr>
+                    <th>Pattern</th>
+                    <th className="num">Forming</th>
+                    <th className="num">Confirmed</th>
+                    <th className="num">Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </Table>
-          </>
-        )}
+                </thead>
+                <tbody>
+                  {matchSummary.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.name}</td>
+                      <td className="num">{row.forming}</td>
+                      <td className="num">{row.confirmed}</td>
+                      <td className="num">{row.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </>
+          )}
+        </section>
+        <section className="summary-panel" aria-label="Look-alike summary">
+          <h2 className="section-label">Look-alike</h2>
+          {lookResult == null || lookResult.as_of == null ? (
+            <EmptyState text={lookResult ? "No successful run yet" : "No look-alike result"} />
+          ) : lookResult.reference_compared === false ? (
+            <EmptyState text="Reference was not compared" />
+          ) : lookSpread.count === 0 ? (
+            <EmptyState text="No names at or above the floor" />
+          ) : (
+            <>
+              <p className="summary-meta">
+                <b>{lookSpread.count}</b> {lookSpread.count === 1 ? "symbol matched" : "symbols matched"}
+                {lookResult.reference ? ` · ${lookResult.reference}` : ""}
+                {lookSpreadText ? ` · ${lookSpreadText}` : ""}
+                {lookResult.as_of ? ` · as of ${lookResult.as_of}` : ""}
+              </p>
+              <LookalikeScoreChart rows={lookSpread.top} />
+            </>
+          )}
+        </section>
       </section>
-      <section className="form-panel" aria-label="Named pattern scan">
+      <section className="scan-section" aria-label="Named patterns">
         <h2 className="section-label">Named patterns</h2>
         <div className="scan-bar">
           <label className="field">
@@ -301,9 +355,6 @@ export function Scans() {
             {named.patterns.map((id) => patternLabel(id, patternOptions)).join(", ") || "Patterns"} · {scopeText} · as of {named.as_of}
           </div>
         ) : null}
-      </section>
-      <section className="form-panel" aria-label="Matches">
-        <h2 className="section-label">Matches</h2>
         <form
           className="scan-bar"
           onSubmit={(event) => {
@@ -402,84 +453,69 @@ export function Scans() {
           </>
         )}
       </section>
-      <section aria-label="Look-alike">
-      <h2 className="section-label">Look-alike</h2>
-      {lookalikes.length === 0 ? <EmptyState text="No patterns yet" /> : null}
-      <div className="chips">
-        {lookalikes.map((row) => (
-          <button key={row.id} type="button" className={row.id === selected ? "chip on" : "chip"} onClick={() => choose(row)}>
-            {row.name}
-            {row.enabled ? "" : " (off)"}
-            <span className="chip-meta">{` · ${row.spec.min_score}`}</span>
-          </button>
-        ))}
-        <button
-          type="button"
-          className="chip"
-          onClick={() => {
-            setSelected(null);
-            setHits(null);
-            setForm(emptyForm);
-            setRefQ("");
-            setRefHits([]);
+      <section className="scan-section" aria-label="Look-alike">
+        <h2 className="section-label">Look-alike</h2>
+        {lookalikes.length > 0 ? (
+          <div className="chips">
+            {lookalikes.map((row) => (
+              <button key={row.id} type="button" className={row.id === selected ? "chip on" : "chip"} onClick={() => choose(row)}>
+                {row.name}
+                {row.enabled ? "" : " (off)"}
+                <span className="chip-meta">{` · ${row.spec.min_score}`}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className="chip"
+              onClick={() => {
+                setSelected(null);
+                setHits(null);
+                setForm(emptyForm);
+                setRefQ("");
+                setRefHits([]);
+                setLookTicker("");
+                setAppliedLook("");
+                setLookPage(0);
+              }}
+            >
+              New
+            </button>
+          </div>
+        ) : null}
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setErr(null);
+            const body: PatternInput = {
+              name: form.name.trim(),
+              kind: "lookalike",
+              reference: form.reference.trim(),
+              min_score: Number(form.minScore),
+              top_k: Number(form.topK),
+              enabled: form.enabled,
+            };
+            try {
+              const saved = await api.savePattern(body, selected ?? undefined);
+              await loadPatterns(saved.id);
+            } catch {
+              setErr("Could not save pattern");
+            }
           }}
         >
-          New
-        </button>
-      </div>
-      <form
-        className="form-panel"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setErr(null);
-          const body: PatternInput = {
-            name: form.name.trim(),
-            kind: "lookalike",
-            reference: form.reference.trim(),
-            min_score: Number(form.minScore),
-            top_k: Number(form.topK),
-            enabled: form.enabled,
-          };
-          try {
-            const saved = await api.savePattern(body, selected ?? undefined);
-            await loadPatterns(saved.id);
-          } catch {
-            setErr("Could not save pattern");
-          }
-        }}
-      >
-        <div className="form-row">
-          <label className="field">
-            Name
-            <Input aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ background: "var(--bg)", minWidth: 200 }} />
-          </label>
-          <label className="field">
-            Reference ticker
-            <Input
-              aria-label="Reference"
-              value={refQ || form.reference}
-              onChange={(e) => {
-                setRefQ(e.target.value);
-                setForm({ ...form, reference: e.target.value.toUpperCase() });
-              }}
-              required
-              style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
-            />
-          </label>
-          <label className="field">
-            Minimum score
-            <Input aria-label="Minimum score" value={form.minScore} onChange={(e) => setForm({ ...form, minScore: e.target.value })} style={{ background: "var(--bg)", width: 120, fontFamily: "var(--font-num)", textAlign: "right" }} />
-          </label>
-          <label className="field">
-            Top K
-            <Input aria-label="Top K" value={form.topK} onChange={(e) => setForm({ ...form, topK: e.target.value })} style={{ background: "var(--bg)", width: 100, fontFamily: "var(--font-num)", textAlign: "right" }} />
-          </label>
-          <label className="check-label">
-            <Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-            Enabled
-          </label>
-          <div className="form-actions">
-            <Button type="submit">Save</Button>
+          <div className="scan-bar">
+            <label className="field is-compact">
+              Reference ticker
+              <Input
+                aria-label="Reference"
+                value={refQ || form.reference}
+                onChange={(e) => {
+                  setRefQ(e.target.value);
+                  setForm({ ...form, reference: e.target.value.toUpperCase() });
+                }}
+                required
+                style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
+              />
+            </label>
             <Button
               type="button"
               disabled={lookScanDisabled}
@@ -491,6 +527,9 @@ export function Scans() {
                   .scanLookalike(selected)
                   .then((body) => {
                     setHits(body);
+                    setAppliedLook("");
+                    setLookTicker("");
+                    setLookPage(0);
                     setErr(null);
                   })
                   .catch(() => setErr("Scan failed"))
@@ -500,40 +539,76 @@ export function Scans() {
               {lookScanning ? "Scanning" : "Scan"}
             </Button>
           </div>
-        </div>
-        {refHits.length > 0 ? (
-          <div className="suggest" style={{ marginTop: 8 }}>
-            {refHits.map((row) => (
-              <button
-                key={row.ticker}
-                type="button"
-                onClick={() => {
-                  setForm({ ...form, reference: row.ticker });
-                  setRefQ("");
-                  setRefHits([]);
-                }}
-              >
-                <span className="ticker-cell">{row.ticker}</span> {row.name}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </form>
-      {hits && hits.kind !== "named" ? (
-        <div className="table-panel">
-          <div className="hits-head">
-            <div className="hits-ref">
-              Reference
-              <span className="ticker-cell" style={{ textTransform: "none", letterSpacing: 0, fontSize: 14 }}>
-                {hits.reference || "—"}
-              </span>
+          {formMatchesSaved ? null : (
+            <div className="scan-bar">
+              <label className="field">
+                Name
+                <Input aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ background: "var(--bg)", minWidth: 200 }} />
+              </label>
+              <label className="field">
+                Minimum score
+                <Input aria-label="Minimum score" value={form.minScore} onChange={(e) => setForm({ ...form, minScore: e.target.value })} style={{ background: "var(--bg)", width: 120, fontFamily: "var(--font-num)", textAlign: "right" }} />
+              </label>
+              <label className="field">
+                Top K
+                <Input aria-label="Top K" value={form.topK} onChange={(e) => setForm({ ...form, topK: e.target.value })} style={{ background: "var(--bg)", width: 100, fontFamily: "var(--font-num)", textAlign: "right" }} />
+              </label>
+              <label className="check-label">
+                <Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+                Enabled
+              </label>
+              <Button type="submit">Save</Button>
             </div>
-            {hits.as_of ? <span className="board-pill">as of {hits.as_of}</span> : null}
-          </div>
-          {hits.as_of == null ? <EmptyState text="No successful run yet" /> : null}
-          {hits.as_of != null && hits.reference_compared === false ? <EmptyState text="Reference was not compared" /> : null}
-          {hits.as_of != null && hits.reference_compared !== false && hits.hits.length === 0 ? <EmptyState text="No names at or above the floor" /> : null}
-          {hits.hits.length > 0 ? (
+          )}
+          {refHits.length > 0 ? (
+            <div className="suggest">
+              {refHits.map((row) => (
+                <button
+                  key={row.ticker}
+                  type="button"
+                  onClick={() => {
+                    setForm({ ...form, reference: row.ticker });
+                    setRefQ("");
+                    setRefHits([]);
+                  }}
+                >
+                  <span className="ticker-cell">{row.ticker}</span> {row.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </form>
+        <form
+          className="scan-bar"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setAppliedLook(lookTicker.trim());
+            setLookPage(0);
+          }}
+        >
+          <label className="field">
+            Ticker
+            <Input
+              aria-label="Look-alike ticker"
+              value={lookTicker}
+              onChange={(event) => setLookTicker(event.target.value)}
+              style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
+            />
+          </label>
+          <Button type="submit">Search</Button>
+        </form>
+        {lookResult == null ? (
+          <EmptyState text="No patterns yet" />
+        ) : lookResult.as_of == null ? (
+          <EmptyState text="No successful run yet" />
+        ) : lookResult.reference_compared === false ? (
+          <EmptyState text="Reference was not compared" />
+        ) : lookResult.hits.length === 0 ? (
+          <EmptyState text="No names at or above the floor" />
+        ) : lookRows.length === 0 ? (
+          <EmptyState text="No matches" />
+        ) : (
+          <>
             <Table className="heads-up">
               <thead>
                 <tr>
@@ -545,10 +620,10 @@ export function Scans() {
                 </tr>
               </thead>
               <tbody>
-                {hits.hits.map((hit) => (
+                {lookPageRows.map((hit) => (
                   <tr key={hit.ticker}>
                     <td className="ticker-cell">
-                      <Link to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`}>{hit.ticker}</Link>
+                      <Link to={`/scans/${lookResult.pattern_id}/compare/${hit.ticker}`}>{hit.ticker}</Link>
                     </td>
                     <td>{hit.name}</td>
                     <td className="score-cell">
@@ -559,7 +634,7 @@ export function Scans() {
                     </td>
                     <td className="ticker-cell">{hit.window_end}</td>
                     <td className="center">
-                      <Link className="text-btn" to={`/scans/${hits.pattern_id}/compare/${hit.ticker}`}>
+                      <Link className="text-btn" to={`/scans/${lookResult.pattern_id}/compare/${hit.ticker}`}>
                         Compare
                       </Link>
                     </td>
@@ -567,9 +642,21 @@ export function Scans() {
                 ))}
               </tbody>
             </Table>
-          ) : null}
-        </div>
-      ) : null}
+            <div className="pager">
+              <span>
+                {lookFrom}–{lookTo} of {lookRows.length}
+              </span>
+              <div className="pager-actions">
+                <Button variant="ghost" type="button" disabled={lookPageIndex <= 0} onClick={() => setLookPage(lookPageIndex - 1)}>
+                  Previous
+                </Button>
+                <Button variant="ghost" type="button" disabled={lookPageIndex + 1 >= lookPageCount} onClick={() => setLookPage(lookPageIndex + 1)}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </section>
     </div>
   );

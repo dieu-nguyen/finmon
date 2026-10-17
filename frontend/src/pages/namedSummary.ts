@@ -36,6 +36,40 @@ export function orderNamedHits<T extends NamedHitOrder>(hits: readonly T[]): T[]
   });
 }
 
+export type LookalikeScore = {
+  ticker: string;
+  score: number;
+};
+
+/** Highest score first, then ticker. The summary chart uses this full list. */
+export function orderLookalikeHits<T extends LookalikeScore>(hits: readonly T[]): T[] {
+  return [...hits].sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score;
+    return a.ticker.localeCompare(b.ticker);
+  });
+}
+
+/** Applied look-alike ticker filter. An empty ticker keeps every hit. */
+export function filterLookalikeHits<T extends { ticker: string }>(hits: readonly T[], ticker: string): T[] {
+  const query = ticker.trim().toUpperCase();
+  if (!query) return [...hits];
+  return hits.filter((hit) => hit.ticker.toUpperCase().includes(query));
+}
+
+export const LOOKALIKE_CHART_LIMIT = 8;
+
+/** Count and score spread of the full look-alike list, plus the top of that list for the chart. */
+export function summarizeLookalikeHits(hits: readonly LookalikeScore[], limit = LOOKALIKE_CHART_LIMIT) {
+  const ordered = orderLookalikeHits(hits);
+  const scores = ordered.map((hit) => hit.score);
+  return {
+    count: ordered.length,
+    min: scores.length ? scores[scores.length - 1] : null,
+    max: scores.length ? scores[0] : null,
+    top: ordered.slice(0, limit),
+  };
+}
+
 /** Applied match filter. An empty pattern and ticker keeps every hit. */
 export function filterNamedHits<T extends { ticker: string; pattern?: string | null }>(
   hits: readonly T[],

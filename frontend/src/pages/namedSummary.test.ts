@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterNamedHits, orderNamedHits, summarizeNamedHits } from "./namedSummary";
+import { filterLookalikeHits, filterNamedHits, orderNamedHits, summarizeLookalikeHits, summarizeNamedHits } from "./namedSummary";
 
 describe("summarizeNamedHits", () => {
   it("counts each pattern once per symbol and splits forming from confirmed", () => {
@@ -38,5 +38,17 @@ describe("summarizeNamedHits", () => {
     ];
     expect(filterNamedHits(hits, { pattern: "", ticker: "  " })).toEqual(hits);
     expect(filterNamedHits(hits, { pattern: "double_top", ticker: "vn" }).map((hit) => hit.ticker)).toEqual(["VNM"]);
+  });
+
+  it("summarizes the full look-alike list without forming or confirmed", () => {
+    const rows = Array.from({ length: 9 }, (_, index) => ({ ticker: `T${index}`, score: 0.8 + index / 100 }));
+    const summary = summarizeLookalikeHits(rows);
+    expect(summary.count).toBe(9);
+    expect(summary.min).toBeCloseTo(0.8);
+    expect(summary.max).toBeCloseTo(0.88);
+    expect(summary.top).toHaveLength(8);
+    expect(summary.top[0]?.ticker).toBe("T8");
+    expect(filterLookalikeHits(rows, "  ")).toHaveLength(9);
+    expect(filterLookalikeHits(rows, "t1").map((hit) => hit.ticker)).toEqual(["T1"]);
   });
 });

@@ -76,7 +76,7 @@ export function NamedMatchChart({ rows }: { rows: readonly PatternMatchSummary[]
   const option = useMemo(() => namedMatchChartOption(rows), [rows]);
   return (
     <div className="named-summary-chart" aria-label="Pattern match chart">
-      <ReactECharts option={option} notMerge lazyUpdate style={{ height: 280, width: "100%" }} />
+      <ReactECharts option={option} notMerge lazyUpdate style={{ height: 220, width: "100%" }} />
     </div>
   );
 }
