@@ -84,6 +84,7 @@ export type ScanHit = {
   swings?: { pattern?: string; points?: { role?: string; date: string; price: number }[]; neckline?: { date: string; price: number }[] } | null;
   pattern?: string | null;
   run_id?: number | null;
+  scanned_at?: string | null;
 };
 
 export type PatternHits = {
@@ -119,6 +120,7 @@ export type NamedMatch = {
     neckline?: { date: string; price: number }[];
   };
   run_id?: number | null;
+  scanned_at?: string | null;
 };
 
 export type NamedCheck = {

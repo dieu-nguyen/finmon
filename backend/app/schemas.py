@@ -114,6 +114,7 @@ class HitOut(BaseModel):
     swings: dict[str, Any] | None = None
     pattern: str | None = None
     run_id: int | None = None
+    scanned_at: datetime | None = None
 
 
 class HitsOut(BaseModel):
@@ -135,6 +136,7 @@ class NamedMatchOut(BaseModel):
     window_end: date
     swings: dict[str, Any]
     run_id: int | None = None
+    scanned_at: datetime | None = None
 
 
 class NamedCheckOut(BaseModel):

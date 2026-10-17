@@ -337,3 +337,87 @@ def test_old_market_run_without_compared_covers_only_the_eligible_universe(clien
     assert db.scalars(select(ScanHit).where(ScanHit.ticker == "XMD")).all()
     assert client.get("/api/symbols/XMD/named-patterns").json()["matches"] == []
     assert client.get("/api/symbols/ACV/named-patterns").json()["matches"][0]["run_id"] == market.id
+
+
+def test_symbol_keeps_two_patterns_from_two_runs_with_each_run_time(client, db):
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(20)]
+    anchor = days[-3]
+    pattern = PatternDef(name="Named patterns", kind="named", spec={"manual": True}, schedule="manual", enabled=False)
+    db.add(pattern)
+    db.add(_symbol("ACV", name="Airports"))
+    db.add_all(_bars("ACV", days))
+    db.commit()
+    bottom = _swings(anchor)
+    top = _swings(anchor)
+    top["pattern"] = "double_top"
+    started = datetime(2026, 10, 16, 1, 30)
+    finished = datetime(2026, 10, 17, 7, 5)
+    older = ScanRun(
+        pattern_id=pattern.id,
+        started_at=started,
+        finished_at=None,
+        status="ok",
+        eligible_count=1,
+        compared_count=1,
+        as_of=days[-1],
+        reference_compared=False,
+        request={
+            "mode": "market",
+            "patterns": ["double_bottom"],
+            "scope": "all",
+            "tickers": [],
+            "compared": ["ACV"],
+        },
+    )
+    db.add(older)
+    db.flush()
+    db.add(
+        ScanHit(
+            run_id=older.id,
+            pattern_id=pattern.id,
+            ticker="ACV",
+            score=0.91,
+            window_start=anchor,
+            window_end=days[-1],
+            swings=bottom,
+            state="forming",
+        )
+    )
+    newer = ScanRun(
+        pattern_id=pattern.id,
+        started_at=datetime(2026, 10, 17, 7, 0),
+        finished_at=finished,
+        status="ok",
+        eligible_count=1,
+        compared_count=1,
+        as_of=days[-1],
+        reference_compared=False,
+        request={"mode": "ticker", "patterns": ["double_top"], "tickers": ["ACV"]},
+    )
+    db.add(newer)
+    db.flush()
+    db.add(
+        ScanHit(
+            run_id=newer.id,
+            pattern_id=pattern.id,
+            ticker="ACV",
+            score=0.8,
+            window_start=anchor,
+            window_end=days[-1],
+            swings=top,
+            state="confirmed",
+        )
+    )
+    db.commit()
+
+    symbol = client.get("/api/symbols/ACV/named-patterns").json()["matches"]
+    listed = [hit for hit in client.get("/api/named-scans").json()["hits"] if hit["ticker"] == "ACV"]
+    by_pattern = {row["pattern"]: row for row in symbol}
+    listed_by_pattern = {row["pattern"]: row for row in listed}
+    assert set(by_pattern) == {"double_bottom", "double_top"}
+    assert by_pattern["double_bottom"]["run_id"] == older.id
+    assert by_pattern["double_top"]["run_id"] == newer.id
+    assert by_pattern["double_bottom"]["scanned_at"] == "2026-10-16T01:30:00"
+    assert by_pattern["double_top"]["scanned_at"] == "2026-10-17T07:05:00"
+    assert by_pattern["double_bottom"]["scanned_at"] == listed_by_pattern["double_bottom"]["scanned_at"]
+    assert by_pattern["double_top"]["scanned_at"] == listed_by_pattern["double_top"]["scanned_at"]

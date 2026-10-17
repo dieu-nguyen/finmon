@@ -87,6 +87,7 @@ describe("Scans named patterns", () => {
           state: "forming",
           pattern: "double_bottom",
           run_id: 7,
+          scanned_at: "2026-10-17T07:05:00",
           swings: { points: [{ role: "low", date: "2026-09-20", price: 90 }], neckline: [] },
         },
       ],
@@ -148,7 +149,9 @@ describe("Scans named patterns", () => {
     const summaryRow = summary.getByRole("row", { name: /Double bottom/ });
     expect(within(summaryRow).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["Double bottom", "1", "0", "1"]);
     expect(screen.getByRole("columnheader", { name: "Run" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Scanned" })).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
+    expect(screen.getByText("17 Oct 2026, 14:05")).toBeInTheDocument();
     expect(screen.getAllByText("Double bottom").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/All tickers/).length).toBeGreaterThan(0);
     expect(calls.filter((call) => call.url.includes("/named-scans")).every((call) => call.method === "GET")).toBe(true);

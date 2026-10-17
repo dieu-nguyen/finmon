@@ -161,6 +161,7 @@ describe("Symbol named-pattern readout", () => {
       window_start: "2026-09-20",
       window_end: "2026-09-28",
       run_id: 12,
+      scanned_at: "2026-10-17T07:05:00",
       swings: {
         pattern: "double_bottom",
         points: [
@@ -199,6 +200,7 @@ describe("Symbol named-pattern readout", () => {
     expect(await scan.findByRole("button", { name: /Confirmed/ })).toHaveTextContent("Double bottom");
     expect(scan.getByRole("button", { name: /Confirmed/ })).toHaveTextContent("0.91");
     expect(scan.getByRole("button", { name: /Confirmed/ })).toHaveTextContent("12");
+    expect(scan.getByRole("button", { name: /Confirmed/ })).toHaveTextContent("Scanned 17 Oct 2026, 14:05");
     expect(scan.getByRole("button", { name: /Confirmed/ })).toHaveAttribute("aria-pressed", "true");
 
     await waitFor(() => {

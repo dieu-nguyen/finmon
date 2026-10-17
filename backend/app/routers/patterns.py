@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -7,6 +9,7 @@ from app.db import get_db
 from app.jobs.pattern_scan import (
     LookalikeScanFailed,
     NamedScanFailed,
+    NamedTickerResult,
     combined_named,
     latest_named_run,
     trigger_lookalike,
@@ -210,7 +213,24 @@ def pattern_catalog() -> list[CatalogItem]:
     return [CatalogItem(id=name, label=PATTERN_LABELS[name]) for name in PATTERNS]
 
 
-def _named_hit_out(hit: ScanHit, names: dict[str, str]) -> HitOut:
+def _scanned_at(run: ScanRun) -> datetime:
+    return run.finished_at or run.started_at
+
+
+def _combined_named_hits(db: Session) -> tuple[dict[str, NamedTickerResult], list[ScanHit], dict[int, datetime]]:
+    """The Scans match list: latest covering result per symbol and pattern, still inside 10 sessions."""
+    view = combined_named(db)
+    hits = [hit for result in view.values() for hit in result.hits]
+    hits.sort(key=lambda hit: (-hit.score, hit.ticker, _pattern_of(hit)))
+    ids = sorted({hit.run_id for hit in hits})
+    times: dict[int, datetime] = {}
+    if ids:
+        for row in db.scalars(select(ScanRun).where(ScanRun.id.in_(ids))):
+            times[row.id] = _scanned_at(row)
+    return view, hits, times
+
+
+def _named_hit_out(hit: ScanHit, names: dict[str, str], scanned_at: datetime | None) -> HitOut:
     return HitOut(
         ticker=hit.ticker,
         name=names.get(hit.ticker) or hit.ticker,
@@ -221,14 +241,13 @@ def _named_hit_out(hit: ScanHit, names: dict[str, str]) -> HitOut:
         swings=hit.swings,
         pattern=_pattern_of(hit) or None,
         run_id=hit.run_id,
+        scanned_at=scanned_at,
     )
 
 
 @router.get("/named-scans", response_model=NamedMarketOut)
 def read_named_scan(db: Session = Depends(get_db)) -> NamedMarketOut:
-    view = combined_named(db)
-    hits = [hit for result in view.values() for hit in result.hits]
-    hits.sort(key=lambda hit: (-hit.score, hit.ticker, _pattern_of(hit)))
+    _view, hits, times = _combined_named_hits(db)
     run = latest_named_run(db, mode="market")
     if run is None and not hits:
         return NamedMarketOut()
@@ -240,7 +259,7 @@ def read_named_scan(db: Session = Depends(get_db)) -> NamedMarketOut:
         patterns=list(req.get("patterns") or []),
         scope=scope,
         tickers=list(req.get("tickers") or []),
-        hits=[_named_hit_out(hit, names) for hit in hits],
+        hits=[_named_hit_out(hit, names, times.get(hit.run_id)) for hit in hits],
     )
 
 
@@ -260,7 +279,8 @@ def run_named_scan(body: NamedMarketIn, db: Session = Depends(get_db)) -> NamedM
 @router.get("/symbols/{ticker}/named-patterns", response_model=NamedCheckOut)
 def named_patterns(ticker: str, db: Session = Depends(get_db)) -> NamedCheckOut:
     symbol = ticker.strip().upper()
-    result = combined_named(db).get(symbol)
+    view, hits, times = _combined_named_hits(db)
+    result = view.get(symbol)
     if result is None:
         return NamedCheckOut(ticker=symbol)
     req = result.run.request or {}
@@ -277,9 +297,10 @@ def named_patterns(ticker: str, db: Session = Depends(get_db)) -> NamedCheckOut:
                 window_end=hit.window_end,
                 swings=hit.swings or {},
                 run_id=hit.run_id,
+                scanned_at=times.get(hit.run_id),
             )
-            for hit in result.hits
-            if _pattern_of(hit)
+            for hit in hits
+            if hit.ticker == symbol and _pattern_of(hit)
         ],
     )
 

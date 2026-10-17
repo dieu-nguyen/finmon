@@ -10,8 +10,16 @@ import { DEFAULT_INDICATOR_IDS, indicatorQuery } from "../chart/indicators";
 import { MultiSelect } from "../components/MultiSelect";
 import { markFrom, patternLabel, stateLabel, type PatternMark } from "../chart/patternMarks";
 import { patternMenuOptions } from "../patterns/catalog";
+import { formatScannedAt } from "../time";
 
-type SavedHit = { pattern: string; state: string; score: number; mark: PatternMark; runId?: number | null };
+type SavedHit = {
+  pattern: string;
+  state: string;
+  score: number;
+  mark: PatternMark;
+  runId?: number | null;
+  scannedAt?: string | null;
+};
 
 const SIDE_TABS = ["Company", "Note", "Alert", "Scan"];
 const patternOptions = patternMenuOptions();
@@ -188,7 +196,14 @@ export function SymbolPage() {
           if (!hit || !mark || !pattern) {
             setSavedHit(null);
           } else {
-            setSavedHit({ pattern, state: hit.state || "", score: hit.score, mark, runId: hit.run_id });
+            setSavedHit({
+              pattern,
+              state: hit.state || "",
+              score: hit.score,
+              mark,
+              runId: hit.run_id,
+              scannedAt: hit.scanned_at,
+            });
           }
           setDeepSettled(true);
         })
@@ -207,7 +222,14 @@ export function SymbolPage() {
         if (!hit || !mark || !hit.pattern) {
           setSavedHit(null);
         } else {
-          setSavedHit({ pattern: hit.pattern, state: hit.state || "", score: hit.score, mark, runId: hit.run_id });
+          setSavedHit({
+            pattern: hit.pattern,
+            state: hit.state || "",
+            score: hit.score,
+            mark,
+            runId: hit.run_id,
+            scannedAt: hit.scanned_at,
+          });
         }
         setDeepSettled(true);
       })
@@ -234,9 +256,11 @@ export function SymbolPage() {
   }, [waitingForHit, picked, matches, deepHit, ranked]);
   const orphan = deepHit && !matches.some((row) => row.pattern === deepHit.pattern) ? deepHit : null;
 
-  function matchText(pattern: string, state: string, score: number, runId?: number | null) {
+  function matchText(pattern: string, state: string, score: number, runId?: number | null, scannedAt?: string | null) {
     const base = `${patternLabel(pattern, patternOptions)} · ${stateLabel(state)} · ${score.toFixed(2)}`;
-    return runId == null ? base : `${base} · ${runId}`;
+    const withRun = runId == null ? base : `${base} · ${runId}`;
+    const when = formatScannedAt(scannedAt);
+    return when ? `${withRun} · Scanned ${when}` : withRun;
   }
 
   async function runNamedScan() {
@@ -371,7 +395,7 @@ export function SymbolPage() {
                 <div className="scan-results">
                   {orphan ? (
                     <button type="button" className="scan-row on" aria-pressed="true">
-                      {matchText(orphan.pattern, orphan.state, orphan.score, orphan.runId)}
+                      {matchText(orphan.pattern, orphan.state, orphan.score, orphan.runId, orphan.scannedAt)}
                     </button>
                   ) : null}
                   {ranked.map((row) => (
@@ -385,7 +409,7 @@ export function SymbolPage() {
                         setPicked(row.pattern);
                       }}
                     >
-                      {matchText(row.pattern, row.state, row.score, row.run_id)}
+                      {matchText(row.pattern, row.state, row.score, row.run_id, row.scanned_at)}
                     </button>
                   ))}
                 </div>

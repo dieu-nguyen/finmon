@@ -7,6 +7,7 @@ import { patternMenuOptions } from "../patterns/catalog";
 import { Banner, Button, Checkbox, EmptyState, Input, Select, Table } from "../design-system";
 import { LookalikeScoreChart } from "./LookalikeScoreChart";
 import { NamedMatchChart } from "./NamedMatchChart";
+import { formatScannedAt } from "../time";
 import {
   MATCH_PAGE_SIZE,
   filterLookalikeHits,
@@ -403,6 +404,7 @@ export function Scans() {
                   <th className="num">Score</th>
                   <th>As of</th>
                   <th>Run</th>
+                  <th>Scanned</th>
                   <th />
                 </tr>
               </thead>
@@ -423,6 +425,7 @@ export function Scans() {
                     </td>
                     <td className="ticker-cell">{hit.window_end}</td>
                     <td className="ticker-cell">{typeof hit.run_id === "number" ? hit.run_id : ""}</td>
+                    <td className="ticker-cell">{formatScannedAt(hit.scanned_at)}</td>
                     <td className="center">
                       <Link className="text-btn" to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>
                         Chart
