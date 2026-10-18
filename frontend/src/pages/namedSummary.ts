@@ -41,7 +41,7 @@ export type LookalikeScore = {
   score: number;
 };
 
-/** Highest score first, then ticker. The summary chart uses this full list. */
+/** Highest score first, then ticker. The summary chart uses this list before the ticker filter. */
 export function orderLookalikeHits<T extends LookalikeScore>(hits: readonly T[]): T[] {
   return [...hits].sort((a, b) => {
     if (a.score !== b.score) return b.score - a.score;

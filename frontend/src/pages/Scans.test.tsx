@@ -131,13 +131,11 @@ describe("Scans named patterns", () => {
 
     expect(await screen.findByRole("link", { name: "VHM" })).toHaveAttribute("href", "/symbol/VHM?pattern=double_bottom");
     expect(screen.getAllByText("Forming").length).toBeGreaterThan(0);
-    const summary = within(screen.getByRole("region", { name: "Named pattern summary" }));
     const named = within(screen.getByRole("region", { name: "Named patterns" }));
-    const band = screen.getByRole("region", { name: "Summary" });
-    expect(band.compareDocumentPosition(named.getByRole("heading", { name: "Named patterns" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const summary = within(named.getByRole("region", { name: "Named pattern summary" }));
     expect(named.queryByRole("heading", { name: "Matches" })).not.toBeInTheDocument();
-    expect(named.getByRole("button", { name: "Scan" }).compareDocumentPosition(named.getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(named.queryByRole("region", { name: "Named pattern summary" })).not.toBeInTheDocument();
+    expect(named.getByRole("region", { name: "Named pattern summary" }).compareDocumentPosition(named.getByRole("button", { name: "Scan" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(named.getByRole("button", { name: "Scan" }).compareDocumentPosition(named.getByRole("table", { name: "Named matches" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(summary.getByTestId("named-summary-chart")).toHaveAttribute("data-background", "#0e1116");
     expect(summary.getByTestId("named-summary-chart")).toHaveAttribute("data-legend", JSON.stringify(["Forming", "Confirmed"]));
     expect(summary.getByTestId("named-summary-chart")).toHaveAttribute(
@@ -162,11 +160,12 @@ describe("Scans named patterns", () => {
     expect(screen.queryByRole("link", { name: "Compare" })).not.toBeInTheDocument();
 
     const lookalike = within(screen.getByRole("region", { name: (value) => value === "Look-alike" }));
-    const lookSummary = within(screen.getByRole("region", { name: "Look-alike summary" }));
-    expect(lookSummary.getByRole("heading", { name: "Look-alike" })).toBeInTheDocument();
+    const lookSummary = within(lookalike.getByRole("region", { name: "Look-alike summary" }));
+    expect(screen.getByRole("region", { name: "Named patterns" }).compareDocumentPosition(screen.getByRole("region", { name: (value) => value === "Look-alike" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(lookalike.getByRole("heading", { name: "Look-alike" })).toBeInTheDocument();
     expect(lookSummary.getByText("No look-alike result")).toBeInTheDocument();
     expect(lookSummary.queryByText("Forming")).not.toBeInTheDocument();
-    expect(band.compareDocumentPosition(lookalike.getByRole("heading", { name: "Look-alike" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(lookalike.getByRole("region", { name: "Look-alike summary" }).compareDocumentPosition(lookalike.getByRole("button", { name: "Scan" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(lookalike.getByRole("button", { name: "Scan" }).compareDocumentPosition(lookalike.getByRole("button", { name: "Search" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(lookalike.queryByRole("combobox", { name: "Patterns" })).not.toBeInTheDocument();
     expect(lookalike.queryByRole("combobox", { name: "Ticker scope" })).not.toBeInTheDocument();
@@ -357,7 +356,7 @@ describe("Scans named patterns", () => {
     ]);
   });
 
-  it("uses state and right edge from Search for the match list and leaves the summary", async () => {
+  it("changes the named chart when Right edge changes and leaves it when only State changes", async () => {
     const summaryHits = [
       {
         ticker: "VHM",
@@ -443,34 +442,58 @@ describe("Scans named patterns", () => {
     expect(summary.queryByRole("spinbutton", { name: "Right edge" })).not.toBeInTheDocument();
     const lookalike = within(screen.getByRole("region", { name: (value) => value === "Look-alike" }));
     expect(lookalike.queryByRole("combobox", { name: "State" })).not.toBeInTheDocument();
-    expect(lookalike.queryByRole("spinbutton", { name: "Right edge" })).not.toBeInTheDocument();
+    expect(lookalike.getByRole("spinbutton", { name: "Right edge" })).toHaveValue(10);
+    const chartCalls = () => calls.filter((url) => namedScanPath(url) && url.includes("right_edge=") && !url.includes("state="));
     const before = chartSeries();
     expect(before).toBe(
       JSON.stringify([
-        { name: "Forming", data: [2, 0], color: "#6ea8fe" },
-        { name: "Confirmed", data: [0, 2], color: "#3dd68c" },
+        { name: "Forming", data: [1, 0], color: "#6ea8fe" },
+        { name: "Confirmed", data: [0, 1], color: "#3dd68c" },
       ]),
     );
-    expect(calls.some((url) => namedScanPath(url) && !url.includes("?"))).toBe(true);
-    expect(calls.some((url) => url.includes("right_edge=10") && !url.includes("state="))).toBe(true);
+    expect(chartCalls().some((url) => url.includes("right_edge=10"))).toBe(true);
+    const chartCallsBeforeState = chartCalls().length;
 
     fireEvent.change(matches.getByRole("combobox", { name: "State" }), { target: { value: "confirmed" } });
-    fireEvent.change(matches.getByRole("spinbutton", { name: "Right edge" }), { target: { value: "20" } });
     expect(matches.getByRole("link", { name: "VHM" })).toBeInTheDocument();
-    expect(matches.queryByRole("link", { name: "LATE" })).not.toBeInTheDocument();
     expect(chartSeries()).toBe(before);
 
+    fireEvent.click(matches.getByRole("button", { name: "Search" }));
+    expect(await matches.findByRole("link", { name: "VNM" })).toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "VHM" })).not.toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "OLD" })).not.toBeInTheDocument();
+    expect(matches.queryByRole("link", { name: "LATE" })).not.toBeInTheDocument();
+    expect(calls.some((url) => url.includes("state=confirmed") && url.includes("right_edge=10"))).toBe(true);
+    expect(chartCalls()).toHaveLength(chartCallsBeforeState);
+    expect(chartSeries()).toBe(before);
+    expect(within(summary.getByRole("row", { name: /Double bottom/ })).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "Double bottom",
+      "1",
+      "0",
+      "1",
+    ]);
+
+    fireEvent.change(matches.getByRole("spinbutton", { name: "Right edge" }), { target: { value: "20" } });
+    expect(chartSeries()).toBe(before);
     fireEvent.click(matches.getByRole("button", { name: "Search" }));
     expect(await matches.findByRole("link", { name: "LATE" })).toBeInTheDocument();
     expect(matches.getByRole("link", { name: "VNM" })).toBeInTheDocument();
     expect(matches.queryByRole("link", { name: "VHM" })).not.toBeInTheDocument();
     expect(matches.queryByRole("link", { name: "OLD" })).not.toBeInTheDocument();
     expect(calls.some((url) => url.includes("state=confirmed") && url.includes("right_edge=20"))).toBe(true);
-    expect(chartSeries()).toBe(before);
-    expect(within(summary.getByRole("row", { name: /Double bottom/ })).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
-      "Double bottom",
-      "2",
+    expect(chartCalls().some((url) => url.includes("right_edge=20"))).toBe(true);
+    await waitFor(() =>
+      expect(chartSeries()).toBe(
+        JSON.stringify([
+          { name: "Forming", data: [1, 0], color: "#6ea8fe" },
+          { name: "Confirmed", data: [0, 2], color: "#3dd68c" },
+        ]),
+      ),
+    );
+    expect(within(summary.getByRole("row", { name: /Double top/ })).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "Double top",
       "0",
+      "2",
       "2",
     ]);
   });
@@ -529,7 +552,7 @@ describe("Scans named patterns", () => {
 
     const matches = within(await screen.findByRole("region", { name: "Named patterns" }));
     const tickers = () =>
-      within(matches.getByRole("table"))
+      within(matches.getByRole("table", { name: "Named matches" }))
         .getAllByRole("row")
         .slice(1)
         .map((row) => within(row).getAllByRole("link")[0]?.textContent);
@@ -575,6 +598,11 @@ describe("Scans named patterns", () => {
           ]);
         }
         if (url.includes("/api/patterns/3/hits")) {
+          const edge = new URLSearchParams(url.split("?")[1] ?? "").get("right_edge");
+          const visible =
+            edge === "20"
+              ? [{ ticker: "OLD", name: "Older", score: 0.99, window_start: "2026-08-01", window_end: "2026-08-01" }, ...hits]
+              : hits;
           return json({
             pattern_id: 3,
             name: "Like VCB",
@@ -582,7 +610,7 @@ describe("Scans named patterns", () => {
             reference: "VCB",
             as_of: "2026-09-28",
             reference_compared: true,
-            hits,
+            hits: visible,
           });
         }
         return json({ items: [] });
@@ -595,9 +623,12 @@ describe("Scans named patterns", () => {
       </MemoryRouter>,
     );
 
-    const summary = within(await screen.findByRole("region", { name: "Look-alike summary" }));
+    const section = within(await screen.findByRole("region", { name: (value) => value === "Look-alike" }));
+    const summary = within(section.getByRole("region", { name: "Look-alike summary" }));
     expect(await summary.findByText(/symbols matched/)).toBeInTheDocument();
-    const section = within(screen.getByRole("region", { name: (value) => value === "Look-alike" }));
+    expect(section.getByRole("region", { name: "Look-alike summary" }).compareDocumentPosition(section.getByRole("button", { name: "Scan" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(section.getByRole("spinbutton", { name: "Right edge" })).toHaveValue(10);
+    expect(section.queryByRole("combobox", { name: "State" })).not.toBeInTheDocument();
     expect(summary.getByText("21")).toBeInTheDocument();
     expect(summary.getByText(/symbols matched/)).toBeInTheDocument();
     expect(summary.queryByText("Forming")).not.toBeInTheDocument();
@@ -605,6 +636,7 @@ describe("Scans named patterns", () => {
     const chart = summary.getByTestId("named-summary-chart");
     expect(chart).toHaveAttribute("data-legend", JSON.stringify(["Score"]));
     expect(JSON.parse(chart.getAttribute("data-categories") ?? "[]")).toHaveLength(8);
+    expect(JSON.parse(chart.getAttribute("data-categories") ?? "[]")[0]).toBe("L20");
     expect(section.getByRole("button", { name: "Scan" }).compareDocumentPosition(section.getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(section.queryByRole("combobox", { name: "Patterns" })).not.toBeInTheDocument();
 
@@ -632,5 +664,13 @@ describe("Scans named patterns", () => {
     expect(section.queryByRole("link", { name: "L00" })).not.toBeInTheDocument();
     fireEvent.click(section.getByRole("button", { name: "Next" }));
     expect(tickers()).toEqual(["L00"]);
+
+    fireEvent.change(section.getByRole("spinbutton", { name: "Right edge" }), { target: { value: "20" } });
+    expect(summary.getByText("21")).toBeInTheDocument();
+    expect(JSON.parse(summary.getByTestId("named-summary-chart").getAttribute("data-categories") ?? "[]")[0]).toBe("L20");
+    fireEvent.click(section.getByRole("button", { name: "Search" }));
+    expect(await summary.findByText("22")).toBeInTheDocument();
+    expect(JSON.parse(summary.getByTestId("named-summary-chart").getAttribute("data-categories") ?? "[]")[0]).toBe("OLD");
+    expect(tickers()[0]).toBe("OLD");
   });
 });

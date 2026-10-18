@@ -169,7 +169,7 @@ export const api = {
   deleteAlert: (id: number) => req(`/api/alerts/${id}`, { method: "DELETE" }),
   company: (ticker: string) => req<Record<string, unknown>>(`/api/symbols/${ticker}/company`),
   patterns: () => req<Pattern[]>("/api/patterns"),
-  patternHits: (id: number, init?: RequestInit) => req<PatternHits>(`/api/patterns/${id}/hits`, init),
+  patternHits: (id: number, query = "", init?: RequestInit) => req<PatternHits>(`/api/patterns/${id}/hits${query}`, init),
   scanLookalike: (id: number) => req<PatternHits>(`/api/patterns/${id}/scan`, { method: "POST" }),
   patternCatalog: (init?: RequestInit) => req<PatternCatalogItem[]>("/api/pattern-catalog", init),
   namedScan: (init?: RequestInit) => req<NamedScan>("/api/named-scans", init),

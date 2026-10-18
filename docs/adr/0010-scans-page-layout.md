@@ -1,4 +1,4 @@
-# 0010. Scans opens with one summary and one section per scan
+# 0010. Each scan section opens with its summary
 
 Status: accepted
 Date: 2026-10-17
@@ -9,12 +9,14 @@ Named results are already one combined list (`docs/adr/0008-mixed-scan-results.m
 
 ## Decision
 
-Scans opens with one summary band, two panels. The left panel is named-pattern forming and confirmed counts for the full current list. The right panel is the latest look-alike summary: match count and score spread. Match search does not change the summary.
+Named patterns is one section. Look-alike is its own section. Each section opens with its summary chart, then the scan action on one row, then the hit list. There is no shared summary band.
 
-Each scan type is one section. Search and 20-row pages are the body, newest run first. The scan control is one row inside the section, not its own section. Look-alike uses that same shape.
+The named chart is forming and confirmed counts for hits whose anchor is within that section's Right edge session count. The control defaults to 10 and is shared with the named match list. Pattern, ticker, and state narrow the match list only. The look-alike chart uses that section's own Right edge control, also default 10, and that same count narrows the look-alike hit list. Look-alike has no forming or confirmed filter.
 
-Each match row shows the run finish time in Asia/Ho_Chi_Minh.
+Search and 20-row pages are the body, newest run first. The scan control is one row inside the section, not its own section.
+
+Each named match row shows the run finish time in Asia/Ho_Chi_Minh.
 
 ## Consequences
 
-The summary stays the full current list while the tables page. Build spec: `docs/pattern-compare.md`.
+The summary chart and the list in a section agree on the right-edge session count. Other match filters do not move the chart. The page still reads stored hits and counts sessions from `daily_bar` for those tickers only. Build spec: `docs/pattern-compare.md`.

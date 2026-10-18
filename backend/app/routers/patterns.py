@@ -109,7 +109,11 @@ def update_pattern(pattern_id: int, body: PatternIn, db: Session = Depends(get_d
 
 
 @router.get("/patterns/{pattern_id}/hits", response_model=HitsOut)
-def pattern_hits(pattern_id: int, db: Session = Depends(get_db)) -> HitsOut:
+def pattern_hits(
+    pattern_id: int,
+    db: Session = Depends(get_db),
+    right_edge: Annotated[int | None, Query(ge=0)] = None,
+) -> HitsOut:
     pattern = db.get(PatternDef, pattern_id)
     if pattern is None:
         raise HTTPException(404, "unknown pattern")
@@ -135,9 +139,16 @@ def pattern_hits(pattern_id: int, db: Session = Depends(get_db)) -> HitsOut:
             run_id=run_id,
             status=status,
         )
-    hits = db.scalars(
-        select(ScanHit).where(ScanHit.run_id == run.id).order_by(ScanHit.score.desc(), ScanHit.ticker)
-    ).all()
+    hits = list(
+        db.scalars(
+            select(ScanHit).where(ScanHit.run_id == run.id).order_by(ScanHit.score.desc(), ScanHit.ticker)
+        ).all()
+    )
+    if right_edge is not None:
+        if pattern.kind == "lookalike":
+            hits = _apply_right_edge(db, hits, right_edge, lambda hit: _lookalike_anchor(hit, run.as_of))
+        else:
+            hits = _apply_right_edge(db, hits, right_edge)
     names: dict[str, str] = {}
     tickers = [hit.ticker for hit in hits]
     if tickers:
@@ -335,6 +346,11 @@ def _newest_dates(db: Session, tickers: list[str], limit: int) -> dict[str, list
     return found
 
 
+def _lookalike_anchor(hit: ScanHit, as_of: date | None) -> date | None:
+    """End of the matched window when that date is stored, otherwise the run as-of date."""
+    return _parse_day(hit.window_end) or as_of
+
+
 def _within_right_edge(anchor: date | None, newest: list[date], sessions: int) -> bool:
     if anchor is None:
         return False
@@ -343,9 +359,10 @@ def _within_right_edge(anchor: date | None, newest: list[date], sessions: int) -
     return behind <= sessions
 
 
-def _apply_right_edge(db: Session, hits: list[ScanHit], sessions: int) -> list[ScanHit]:
+def _apply_right_edge(db: Session, hits: list[ScanHit], sessions: int, anchor_of=None) -> list[ScanHit]:
+    resolve = anchor_of or _anchor_date
     dates = _newest_dates(db, [hit.ticker for hit in hits], sessions + 1)
-    return [hit for hit in hits if _within_right_edge(_anchor_date(hit), dates.get(hit.ticker.strip().upper(), []), sessions)]
+    return [hit for hit in hits if _within_right_edge(resolve(hit), dates.get(hit.ticker.strip().upper(), []), sessions)]
 
 
 def _read_named_market(

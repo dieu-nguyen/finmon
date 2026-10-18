@@ -188,7 +188,7 @@ export function SymbolPage() {
     if (/^\d+$/.test(patternId)) {
       const id = Number(patternId);
       api
-        .patternHits(id, { signal: ctrl.signal })
+        .patternHits(id, "", { signal: ctrl.signal })
         .then((body) => {
           const hit = body.hits.find((row) => row.ticker === t);
           const mark = hit ? markFrom(hit.swings) : null;

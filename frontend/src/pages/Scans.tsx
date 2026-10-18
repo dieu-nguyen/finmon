@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type NamedScan, type Pattern, type PatternCatalogItem, type PatternHits, type PatternInput, type ScanHit, type SymbolRow } from "../api";
 import { MultiSelect } from "../components/MultiSelect";
@@ -87,9 +87,15 @@ export function Scans() {
   const [appliedMatch, setAppliedMatch] = useState(defaultMatch);
   const [listedHits, setListedHits] = useState<ScanHit[] | null>(null);
   const [matchPage, setMatchPage] = useState(0);
+  const [chartHits, setChartHits] = useState<ScanHit[] | null>(null);
+  const [namedReload, setNamedReload] = useState(0);
   const [lookTicker, setLookTicker] = useState("");
   const [appliedLook, setAppliedLook] = useState("");
+  const [lookRightEdge, setLookRightEdge] = useState(String(defaultMatch.rightEdge));
+  const [appliedLookEdge, setAppliedLookEdge] = useState(defaultMatch.rightEdge);
+  const [lookEpoch, setLookEpoch] = useState(0);
   const [lookPage, setLookPage] = useState(0);
+  const seededRun = useRef(false);
 
   const lookalikes = patterns.filter((row) => row.kind !== "named");
   const chosen = lookalikes.find((row) => row.id === selected) ?? null;
@@ -117,35 +123,45 @@ export function Scans() {
 
   useEffect(() => {
     loadPatterns().catch(() => setErr("Load error"));
+  }, []);
+
+  useEffect(() => {
     const ctrl = new AbortController();
+    setChartHits(null);
     api
-      .namedScan({ signal: ctrl.signal })
+      .namedMatchList(`?right_edge=${appliedMatch.rightEdge}`, { signal: ctrl.signal })
       .then((body) => {
         if (ctrl.signal.aborted) return;
         const stored = asScan(body);
+        setChartHits(stored.hits);
         setNamed(stored);
-        setPickedPatterns(stored.patterns);
-        setScope(stored.scope);
-        setPickedTickers(stored.tickers);
+        if (!seededRun.current) {
+          seededRun.current = true;
+          setPickedPatterns(stored.patterns);
+          setScope(stored.scope);
+          setPickedTickers(stored.tickers);
+        }
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === "AbortError") return;
+        if (!ctrl.signal.aborted) setChartHits([]);
       })
       .finally(() => {
         if (!ctrl.signal.aborted) setNamedReady(true);
       });
     return () => ctrl.abort();
-  }, []);
+  }, [appliedMatch.rightEdge, namedReload]);
 
   useEffect(() => {
     if (!scanPending(named.status)) return;
     setScanning(true);
     const timer = window.setInterval(() => {
       api
-        .namedScan()
+        .namedMatchList(`?right_edge=${appliedMatch.rightEdge}`)
         .then((body) => {
           const stored = asScan(body);
           setNamed(stored);
+          setChartHits(stored.hits);
           if (!scanPending(stored.status)) {
             setScanning(false);
             if (stored.status === "failed") setErr("Scan failed");
@@ -154,7 +170,7 @@ export function Scans() {
         .catch(() => undefined);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [named.status, named.run_id]);
+  }, [named.status, named.run_id, appliedMatch.rightEdge]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -177,7 +193,7 @@ export function Scans() {
     const patternId = selected;
     const timer = window.setInterval(() => {
       api
-        .patternHits(patternId)
+        .patternHits(patternId, `?right_edge=${appliedLookEdge}`)
         .then((body) => {
           setHits(body);
           if (!scanPending(body.status)) {
@@ -188,7 +204,7 @@ export function Scans() {
         .catch(() => undefined);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [hits?.status, hits?.run_id, selected]);
+  }, [hits?.status, hits?.run_id, selected, appliedLookEdge]);
 
   useEffect(() => {
     if (selected == null) {
@@ -196,18 +212,20 @@ export function Scans() {
       return;
     }
     const ctrl = new AbortController();
+    setHits(null);
     api
-      .patternHits(selected, { signal: ctrl.signal })
+      .patternHits(selected, `?right_edge=${appliedLookEdge}`, { signal: ctrl.signal })
       .then((body) => {
+        if (ctrl.signal.aborted) return;
         setHits(body);
         setErr(null);
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === "AbortError") return;
-        setErr("Load error");
+        if (!ctrl.signal.aborted) setErr("Load error");
       });
     return () => ctrl.abort();
-  }, [selected]);
+  }, [selected, appliedLookEdge, lookEpoch]);
 
   useEffect(() => {
     const q = refQ.trim();
@@ -284,7 +302,7 @@ export function Scans() {
 
   const scanDisabled = pickedPatterns.length === 0 || scanning || (scope === "subset" && pickedTickers.length === 0);
   const scopeText = named.scope === "subset" ? named.tickers.join(", ") || "Subset" : "All tickers";
-  const matchSummary = useMemo(() => summarizeNamedHits(named.hits), [named.hits]);
+  const matchSummary = useMemo(() => summarizeNamedHits(chartHits ?? []), [chartHits]);
   const lookSpread = useMemo(() => summarizeLookalikeHits(hits?.kind === "named" ? [] : (hits?.hits ?? [])), [hits]);
   const lookRows = useMemo(
     () => filterLookalikeHits(orderLookalikeHits(hits?.kind === "named" ? [] : (hits?.hits ?? [])), appliedLook),
@@ -326,17 +344,17 @@ export function Scans() {
         <h1 className="page-title">Scans</h1>
       </div>
       {err ? <Banner kind="error">{err}</Banner> : null}
-      <section className="summary-band" aria-label="Summary">
-        <section className="summary-panel" aria-label="Named pattern summary">
-          <h2 className="section-label">Named patterns</h2>
-          {!namedReady ? (
+      <section className="scan-section" aria-label="Named patterns">
+        <h2 className="section-label">Named patterns</h2>
+        <section aria-label="Named pattern summary">
+          {!namedReady || chartHits == null ? (
             <EmptyState text="Loading" />
           ) : matchSummary.length === 0 ? (
             <EmptyState text="No named pattern matches" />
           ) : (
             <>
               <NamedMatchChart rows={matchSummary} />
-              <Table className="heads-up">
+              <Table className="heads-up" aria-label="Pattern counts">
                 <thead>
                   <tr>
                     <th>Pattern</th>
@@ -359,29 +377,6 @@ export function Scans() {
             </>
           )}
         </section>
-        <section className="summary-panel" aria-label="Look-alike summary">
-          <h2 className="section-label">Look-alike</h2>
-          {lookResult == null || lookResult.as_of == null ? (
-            <EmptyState text={lookResult ? "No successful run yet" : "No look-alike result"} />
-          ) : lookResult.reference_compared === false ? (
-            <EmptyState text="Reference was not compared" />
-          ) : lookSpread.count === 0 ? (
-            <EmptyState text="No names at or above the floor" />
-          ) : (
-            <>
-              <p className="summary-meta">
-                <b>{lookSpread.count}</b> {lookSpread.count === 1 ? "symbol matched" : "symbols matched"}
-                {lookResult.reference ? ` · ${lookResult.reference}` : ""}
-                {lookSpreadText ? ` · ${lookSpreadText}` : ""}
-                {lookResult.as_of ? ` · as of ${lookResult.as_of}` : ""}
-              </p>
-              <LookalikeScoreChart rows={lookSpread.top} />
-            </>
-          )}
-        </section>
-      </section>
-      <section className="scan-section" aria-label="Named patterns">
-        <h2 className="section-label">Named patterns</h2>
         <div className="scan-bar">
           <label className="field">
             Patterns
@@ -427,11 +422,20 @@ export function Scans() {
                 })
                 .then((body) => {
                   const stored = asScan(body);
-                  setNamed(stored);
+                  setNamed((prev) => ({
+                    ...prev,
+                    as_of: stored.as_of,
+                    patterns: stored.patterns,
+                    scope: stored.scope,
+                    tickers: stored.tickers,
+                    run_id: stored.run_id,
+                    status: stored.status,
+                  }));
                   setPickedPatterns(stored.patterns);
                   setScope(stored.scope);
                   setPickedTickers(stored.tickers);
                   setMatchPage(0);
+                  setNamedReload((value) => value + 1);
                   if (!scanPending(stored.status)) setScanning(false);
                 })
                 .catch(() => {
@@ -513,7 +517,7 @@ export function Scans() {
           <EmptyState text={named.hits.length === 0 ? (named.as_of ? "No names at or above the floor" : "No named pattern scan yet") : "No matches"} />
         ) : (
           <>
-            <Table className="heads-up">
+            <Table className="heads-up" aria-label="Named matches">
               <thead>
                 <tr>
                   <th>Ticker</th>
@@ -577,6 +581,27 @@ export function Scans() {
       </section>
       <section className="scan-section" aria-label="Look-alike">
         <h2 className="section-label">Look-alike</h2>
+        <section aria-label="Look-alike summary">
+          {selected != null && hits == null ? (
+            <EmptyState text="Loading" />
+          ) : lookResult == null || lookResult.as_of == null ? (
+            <EmptyState text={lookResult ? "No successful run yet" : "No look-alike result"} />
+          ) : lookResult.reference_compared === false ? (
+            <EmptyState text="Reference was not compared" />
+          ) : lookSpread.count === 0 ? (
+            <EmptyState text="No names at or above the floor" />
+          ) : (
+            <>
+              <p className="summary-meta">
+                <b>{lookSpread.count}</b> {lookSpread.count === 1 ? "symbol matched" : "symbols matched"}
+                {lookResult.reference ? ` · ${lookResult.reference}` : ""}
+                {lookSpreadText ? ` · ${lookSpreadText}` : ""}
+                {lookResult.as_of ? ` · as of ${lookResult.as_of}` : ""}
+              </p>
+              <LookalikeScoreChart rows={lookSpread.top} />
+            </>
+          )}
+        </section>
         {lookalikes.length > 0 ? (
           <div className="chips">
             {lookalikes.map((row) => (
@@ -648,12 +673,16 @@ export function Scans() {
                 api
                   .scanLookalike(selected)
                   .then((body) => {
-                    setHits(body);
                     setAppliedLook("");
                     setLookTicker("");
                     setLookPage(0);
                     setErr(null);
-                    if (!scanPending(body.status)) setLookScanning(false);
+                    if (scanPending(body.status)) {
+                      setHits((current) => (current ? { ...current, status: body.status, run_id: body.run_id } : body));
+                    } else {
+                      setLookEpoch((value) => value + 1);
+                      setLookScanning(false);
+                    }
                   })
                   .catch(() => {
                     setErr("Scan failed");
@@ -707,7 +736,10 @@ export function Scans() {
           className="scan-bar"
           onSubmit={(event) => {
             event.preventDefault();
+            const rightEdge = parseRightEdge(lookRightEdge);
+            setLookRightEdge(String(rightEdge));
             setAppliedLook(lookTicker.trim());
+            setAppliedLookEdge(rightEdge);
             setLookPage(0);
           }}
         >
@@ -720,9 +752,23 @@ export function Scans() {
               style={{ background: "var(--bg)", width: 140, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
             />
           </label>
+          <label className="field">
+            Right edge
+            <Input
+              aria-label="Right edge"
+              type="number"
+              min={0}
+              step={1}
+              value={lookRightEdge}
+              onChange={(event) => setLookRightEdge(event.target.value)}
+              style={{ background: "var(--bg)", width: 100, fontFamily: "var(--font-num)" }}
+            />
+          </label>
           <Button type="submit">Search</Button>
         </form>
-        {lookResult == null ? (
+        {selected != null && hits == null ? (
+          <EmptyState text="Loading" />
+        ) : lookResult == null ? (
           <EmptyState text="No patterns yet" />
         ) : lookResult.as_of == null ? (
           <EmptyState text="No successful run yet" />
@@ -734,7 +780,7 @@ export function Scans() {
           <EmptyState text="No matches" />
         ) : (
           <>
-            <Table className="heads-up">
+            <Table className="heads-up" aria-label="Look-alike hits">
               <thead>
                 <tr>
                   <th>Ticker</th>

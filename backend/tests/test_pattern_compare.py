@@ -3,7 +3,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 
 from app.clients.dnse import DnseClient
 from app.clients.telegram import TelegramSender
@@ -381,3 +381,108 @@ def test_scan_press_scores_one_lookalike(client, db, monkeypatch):
     named = client.post("/api/patterns", json={"name": "Bottoms", "kind": "named", "pattern": "double_bottom", "enabled": True})
     assert named.status_code == 200
     assert client.post(f"/api/patterns/{named.json()['id']}/scan").status_code == 404
+
+
+def test_lookalike_anchor_prefers_the_stored_window_end():
+    from app.routers.patterns import _lookalike_anchor
+
+    hit = ScanHit(
+        ticker="NEAR",
+        score=0.9,
+        window_start=date(2026, 1, 1),
+        window_end=date(2026, 1, 2),
+    )
+    assert _lookalike_anchor(hit, date(2026, 2, 1)) == date(2026, 1, 2)
+    hit.window_end = None
+    assert _lookalike_anchor(hit, date(2026, 2, 1)) == date(2026, 2, 1)
+
+
+def test_lookalike_hits_filter_right_edge_from_window_end_without_load_windows(client, db, engine, monkeypatch):
+    calls = {"windows": 0}
+
+    def windows(*_args, **_kwargs):
+        calls["windows"] += 1
+        return {}, 0
+
+    monkeypatch.setattr("app.jobs.pattern_scan.load_windows", windows)
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(30)]
+    newest = days[-1]
+    near = days[-2]
+    far = days[-16]
+    closes = [float(i + 1) for i in range(30)]
+    pattern = PatternDef(
+        name="Like REF",
+        kind="lookalike",
+        spec={"reference": "REF", "min_score": 0.85, "top_k": 20},
+        schedule="daily",
+        enabled=True,
+    )
+    db.add(pattern)
+    db.add_all([_symbol("NEAR", name="Near"), _symbol("FAR", name="Far"), _symbol("EXTRA", name="Extra")])
+    db.add_all(_bars("NEAR", closes, as_of=newest))
+    db.add_all(_bars("FAR", closes, as_of=newest))
+    db.add_all(_bars("EXTRA", closes, as_of=newest))
+    db.commit()
+    run = ScanRun(
+        pattern_id=pattern.id,
+        started_at=datetime(2026, 10, 1, 8, 0),
+        finished_at=datetime(2026, 10, 1, 8, 0),
+        status="ok",
+        eligible_count=2,
+        compared_count=2,
+        as_of=newest,
+        reference_compared=True,
+        request={"reference": "REF"},
+    )
+    db.add(run)
+    db.flush()
+    db.add_all(
+        [
+            ScanHit(
+                run_id=run.id,
+                pattern_id=pattern.id,
+                ticker="NEAR",
+                score=0.9,
+                window_start=near,
+                window_end=near,
+            ),
+            ScanHit(
+                run_id=run.id,
+                pattern_id=pattern.id,
+                ticker="FAR",
+                score=0.7,
+                window_start=far,
+                window_end=far,
+            ),
+        ]
+    )
+    db.commit()
+
+    def listed(params: dict | None = None) -> list[str]:
+        response = client.get(f"/api/patterns/{pattern.id}/hits", params=params or {})
+        assert response.status_code == 200
+        return [row["ticker"] for row in response.json()["hits"]]
+
+    statements: list[tuple[str, object]] = []
+
+    def before(_conn, _cursor, statement, parameters, _context, _executemany):
+        statements.append((statement, parameters))
+
+    event.listen(engine, "before_cursor_execute", before)
+    try:
+        assert listed() == ["NEAR", "FAR"]
+        fresh = listed({"right_edge": 10})
+    finally:
+        event.remove(engine, "before_cursor_execute", before)
+
+    assert calls["windows"] == 0
+    assert fresh == ["NEAR"]
+    daily = [(statement, params) for statement, params in statements if "daily_bar" in statement.lower()]
+    assert len(daily) == 1
+    statement, params = daily[0]
+    blob = f"{statement} {params!r}".upper()
+    assert "limit" in statement.lower()
+    assert "NEAR" in blob and "FAR" in blob
+    assert "EXTRA" not in blob
+    assert listed({"right_edge": 20}) == ["NEAR", "FAR"]
+    assert {hit.ticker for hit in db.scalars(select(ScanHit).where(ScanHit.run_id == run.id)).all()} == {"NEAR", "FAR"}
