@@ -47,7 +47,7 @@ describe("Symbol side panel", () => {
       vi.fn((input: RequestInfo) => {
         const url = String(input);
         urls.push(url);
-        if (url.endsWith("/bars")) return json([{ date: "2026-01-02", open: 1, high: 2, low: 1, close: 2, volume: 10 }]);
+        if (url.includes("/bars")) return json([{ date: "2026-01-02", open: 1, high: 2, low: 1, close: 2, volume: 10 }]);
         if (url.endsWith("/company")) return json(company);
         if (url.endsWith("/page-note")) return json({ body: "thesis" });
         if (url.includes("/indicators")) return json({ "sma:20": [null] });

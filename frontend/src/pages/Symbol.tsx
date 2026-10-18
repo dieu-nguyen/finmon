@@ -6,6 +6,7 @@ import { Banner, Button, ChangeCell, EmptyState, Input, PriceCell, Select, Spinn
 import { CompanyPanel } from "./CompanyPanel";
 import { DailyChart } from "../chart/DailyChart";
 import type { Drawing, DrawingTool } from "../chart/drawings";
+import { DEFAULT_BAR_SIZE, DEFAULT_RANGE_MONTHS, type BarSize } from "../chart/chartWindow";
 import { DEFAULT_INDICATOR_IDS, indicatorQuery } from "../chart/indicators";
 import { MultiSelect } from "../components/MultiSelect";
 import { markFrom, patternLabel, stateLabel, type PatternMark } from "../chart/patternMarks";
@@ -37,8 +38,7 @@ function asCheck(body: unknown): Pick<NamedCheck, "as_of" | "patterns" | "matche
   };
 }
 
-/** Shared by the candle request and the indicator request. Both omit from/to so the API applies one default window. */
-const CANDLE_RANGE = undefined;
+/** Shared by the candle request and the indicator request for the chart window. */
 
 function isAbortError(error: unknown): boolean {
   return (error instanceof DOMException || error instanceof Error) && error.name === "AbortError";
@@ -49,6 +49,10 @@ export function SymbolPage() {
   const t = ticker.toUpperCase();
   const [bars, setBars] = useState<Bar[]>([]);
   const [barsTicker, setBarsTicker] = useState("");
+  const [rangeMonths, setRangeMonths] = useState(DEFAULT_RANGE_MONTHS);
+  const [barSize, setBarSize] = useState<BarSize>(DEFAULT_BAR_SIZE);
+  const [barsWindow, setBarsWindow] = useState("");
+  const [indicatorWindow, setIndicatorWindow] = useState("");
   const [row, setRow] = useState<SymbolRow | null>(null);
   const [indicatorIds, setIndicatorIds] = useState<string[]>(DEFAULT_INDICATOR_IDS);
   const [indicatorBody, setIndicatorBody] = useState<Record<string, unknown> | null>(null);
@@ -76,19 +80,18 @@ export function SymbolPage() {
   const [followDeepLink, setFollowDeepLink] = useState(true);
   const [deepSettled, setDeepSettled] = useState(false);
 
+  const windowKey = `${rangeMonths}|${barSize}`;
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [b, header, dr, pn] = await Promise.all([
-          api.bars(t, CANDLE_RANGE),
+        const [header, dr, pn] = await Promise.all([
           api.symbol(t).catch(() => null),
           api.drawings(t).catch(() => []),
           api.pageNote(t).catch(() => ({ body: "" })),
         ]);
         if (cancelled) return;
-        setBars(b);
-        setBarsTicker(t);
         setRow(header);
         setDrawings((dr as Drawing[]) || []);
         setNote(pn.body || "");
@@ -101,32 +104,60 @@ export function SymbolPage() {
     };
   }, [t]);
 
+  useEffect(() => {
+    const ctrl = new AbortController();
+    let active = true;
+    const candle = { months: rangeMonths, interval: barSize };
+    api
+      .bars(t, candle, { signal: ctrl.signal })
+      .then((b) => {
+        if (!active) return;
+        setBars(b);
+        setBarsTicker(t);
+        setBarsWindow(windowKey);
+      })
+      .catch((error: unknown) => {
+        if (!active || isAbortError(error)) return;
+        setBars([]);
+        setBarsTicker(t);
+        setBarsWindow(windowKey);
+        setErr("Failed to load symbol");
+      });
+    return () => {
+      active = false;
+      ctrl.abort();
+    };
+  }, [t, rangeMonths, barSize, windowKey]);
+
   const indicatorKey = indicatorIds.join(",");
   useEffect(() => {
     const names = indicatorQuery(indicatorIds);
     if (!names) {
       setIndicatorBody(null);
       setIndicatorTicker(t);
+      setIndicatorWindow(windowKey);
       return;
     }
     const ctrl = new AbortController();
     let active = true;
     api
-      .indicators(t, names, CANDLE_RANGE, { signal: ctrl.signal })
+      .indicators(t, names, { months: rangeMonths, interval: barSize }, { signal: ctrl.signal })
       .then((body) => {
         if (!active) return;
         setIndicatorBody(body);
         setIndicatorTicker(t);
+        setIndicatorWindow(windowKey);
       })
       .catch((error: unknown) => {
         if (!active || isAbortError(error)) return;
         setIndicatorTicker(t);
+        setIndicatorWindow(windowKey);
       });
     return () => {
       active = false;
       ctrl.abort();
     };
-  }, [t, indicatorKey, indicatorIds]);
+  }, [t, indicatorKey, indicatorIds, rangeMonths, barSize, windowKey]);
 
   useEffect(() => {
     if (tab !== "Company") return;
@@ -314,20 +345,28 @@ export function SymbolPage() {
       {err ? <Banner kind="error">{err}</Banner> : null}
       <div className="symbol-split">
         <div className="chart-frame">
-          {bars.length === 0 ? (
+          {barsTicker === t && bars.length === 0 && barsWindow === windowKey ? (
             <EmptyState text={`No daily bars for ${t}`} />
+          ) : barsTicker !== t || bars.length === 0 ? (
+            <Spinner />
           ) : (
             <DailyChart
               ticker={t}
               bars={bars}
               indicatorIds={indicatorIds}
-              indicatorData={barsTicker === t && indicatorTicker === t ? indicatorBody : null}
+              indicatorData={
+                barsWindow === windowKey && indicatorTicker === t && indicatorWindow === windowKey ? indicatorBody : null
+              }
               onIndicator={setIndicatorIds}
               drawings={drawings}
               patternMark={chartMark}
               tool={tool}
               onTool={setTool}
               onDrawings={persistDrawings}
+              rangeMonths={rangeMonths}
+              barSize={barSize}
+              onRangeMonths={setRangeMonths}
+              onBarSize={setBarSize}
             />
           )}
         </div>

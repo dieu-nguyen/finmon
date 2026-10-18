@@ -57,10 +57,19 @@ export type Alert = {
   last_fired_at: string | null;
 };
 
-function withRange(path: string, range?: { from?: string; to?: string }) {
+export type CandleQuery = {
+  from?: string;
+  to?: string;
+  months?: number;
+  interval?: "day" | "week" | "month";
+};
+
+function withRange(path: string, range?: CandleQuery) {
   const params = new URLSearchParams();
   if (range?.from) params.set("from", range.from);
   if (range?.to) params.set("to", range.to);
+  if (range?.months != null) params.set("months", String(range.months));
+  if (range?.interval) params.set("interval", range.interval);
   const q = params.toString();
   return q ? `${path}?${q}` : path;
 }
@@ -148,11 +157,13 @@ export const api = {
   health: () => req<Health>("/api/health"),
   symbols: (q = "", init?: RequestInit) => req<SymbolPage>(`/api/symbols${q}`, init),
   symbol: (ticker: string) => req<SymbolRow>(`/api/symbols/${encodeURIComponent(ticker)}`),
-  bars: (ticker: string, range?: { from?: string; to?: string }) => req<Bar[]>(withRange(`/api/symbols/${ticker}/bars`, range)),
-  indicators: (ticker: string, names: string, range?: { from?: string; to?: string }, init?: RequestInit) => {
+  bars: (ticker: string, range?: CandleQuery, init?: RequestInit) => req<Bar[]>(withRange(`/api/symbols/${ticker}/bars`, range), init),
+  indicators: (ticker: string, names: string, range?: CandleQuery, init?: RequestInit) => {
     const params = new URLSearchParams({ names });
     if (range?.from) params.set("from", range.from);
     if (range?.to) params.set("to", range.to);
+    if (range?.months != null) params.set("months", String(range.months));
+    if (range?.interval) params.set("interval", range.interval);
     return req<Record<string, unknown>>(`/api/symbols/${ticker}/indicators?${params.toString()}`, init);
   },
   pin: (ticker: string) => req<SymbolRow>(`/api/watchlist/${ticker}`, { method: "POST" }),

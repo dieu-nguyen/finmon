@@ -52,8 +52,8 @@ Detail: `docs/market-list.md`.
 
 ### 2.2 Chart (daily)
 
-- Candles come from `daily_bar` only. Default lookback is about one year.
-- Indicators are calculated when the chart asks, on the same from/to window as the candles, and they are not stored: sma, ema, rsi, macd, bollinger, atr, volume_ma. The chart today shows SMA 20. The others exist on the API. Parameters stay editable. Not fetched from a TA vendor.
+- Candles come from `daily_bar` only. The symbol chart chooses a range and a bar size. Range is trading-calendar months back from the newest stored bar: 12, 15, 18, 21, and 24 months, then one-year steps through 10 years. 12 months is labeled 1 year and is the default. 24 months is 2 years. Week is one bar per Monday–Friday trading week in Asia/Ho_Chi_Minh. Month is one bar per calendar month there. Open is the first session, high and low are the extremes, close is the last session, and volume is the sum. A shorter history shows the bars that exist.
+- Indicators are calculated when the chart asks, on that same range and bar size, and they are not stored: sma, ema, rsi, macd, bollinger, atr, volume_ma. The chart today shows SMA 20. The others exist on the API. Parameters stay editable. Not fetched from a TA vendor.
 - Price scale: **đồng**, one convention everywhere.
 - Vietnam session context on the axis (calendar dates, skip non-trading days). Show reference / ceiling / floor when DNSE provides them on the quote.
 
