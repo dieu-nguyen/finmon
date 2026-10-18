@@ -22,6 +22,7 @@ test.describe("Symbol QC", () => {
     await expect(page.getByText("Saved")).toBeVisible();
 
     await page.getByRole("button", { name: "Scan" }).click();
-    await expect(page.getByRole("button", { name: /Double bottom · Confirmed/ })).toHaveAttribute("aria-pressed", "true");
+    const scan = page.locator(".scan-panel");
+    await expect(scan.getByRole("button", { name: /Double bottom · Confirmed/ })).toHaveAttribute("aria-pressed", "true");
   });
 });
