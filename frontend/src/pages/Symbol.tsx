@@ -29,6 +29,17 @@ function rankMatches(rows: NamedMatch[]): NamedMatch[] {
   return [...rows].sort((a, b) => b.score - a.score || a.pattern.localeCompare(b.pattern));
 }
 
+function SessionAge({ count }: { count: number | null | undefined }) {
+  if (count == null || !Number.isFinite(count)) return null;
+  const past = count > 10;
+  return (
+    <span className={past ? "scan-age past" : "scan-age"}>
+      {count} sessions
+      {past ? <span className="scan-age-badge">Past 10</span> : null}
+    </span>
+  );
+}
+
 function asCheck(body: unknown): Pick<NamedCheck, "as_of" | "patterns" | "matches"> {
   const row = body && typeof body === "object" ? (body as { as_of?: unknown; patterns?: unknown; matches?: unknown }) : {};
   return {
@@ -294,6 +305,10 @@ export function SymbolPage() {
     return when ? `${withRun} · Scanned ${when}` : withRun;
   }
 
+  function rowClass(selected: boolean, sessions: number | null | undefined) {
+    return ["scan-row", selected ? "on" : "", sessions != null && sessions > 10 ? "past" : ""].filter(Boolean).join(" ");
+  }
+
   async function runNamedScan() {
     if (selectedPatterns.length === 0 || scanning) return;
     setScanning(true);
@@ -441,14 +456,15 @@ export function SymbolPage() {
                     <button
                       key={`${row.run_id ?? ""}-${row.pattern}`}
                       type="button"
-                      className={selectedPattern === row.pattern ? "scan-row on" : "scan-row"}
+                      className={rowClass(selectedPattern === row.pattern, row.sessions_behind)}
                       aria-pressed={selectedPattern === row.pattern}
                       onClick={() => {
                         setFollowDeepLink(false);
                         setPicked(row.pattern);
                       }}
                     >
-                      {matchText(row.pattern, row.state, row.score, row.run_id, row.scanned_at)}
+                      <span>{matchText(row.pattern, row.state, row.score, row.run_id, row.scanned_at)}</span>
+                      <SessionAge count={row.sessions_behind} />
                     </button>
                   ))}
                 </div>

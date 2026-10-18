@@ -132,6 +132,7 @@ export type NamedMatch = {
   };
   run_id?: number | null;
   scanned_at?: string | null;
+  sessions_behind?: number | null;
 };
 
 export type NamedCheck = {

@@ -384,6 +384,9 @@ h1, h2, h3 { margin: 0; }
 }
 .scan-row {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   min-height: 32px;
   padding: 6px 10px;
@@ -399,6 +402,22 @@ h1, h2, h3 { margin: 0; }
   color: var(--accent);
   border-color: var(--accent);
   background: var(--bg-selected);
+}
+.scan-row.past,
+.scan-row.on.past {
+  color: var(--down);
+}
+.scan-row.on.past {
+  border-color: var(--down);
+}
+.scan-age {
+  white-space: nowrap;
+}
+.scan-age-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
 }
 .scan-summary {
   color: var(--text-muted);
