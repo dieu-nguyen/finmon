@@ -351,6 +351,26 @@ def _lookalike_anchor(hit: ScanHit, as_of: date | None) -> date | None:
     return _parse_day(hit.window_end) or as_of
 
 
+def _sessions_behind(anchor: date | None, dates: list[date]) -> int | None:
+    """How many stored sessions fall strictly after the anchor."""
+    if anchor is None:
+        return None
+    return sum(1 for day in dates if day > anchor)
+
+
+def _ticker_dates_after(db: Session, ticker: str, earliest: date) -> list[date]:
+    """One indexed read of this ticker's bar dates after `earliest`. Dates only."""
+    found: list[date] = []
+    rows = db.scalars(
+        select(DailyBar.date).where(DailyBar.ticker == ticker, DailyBar.date > earliest).order_by(DailyBar.date.desc())
+    ).all()
+    for raw in rows:
+        parsed = _parse_day(raw)
+        if parsed is not None:
+            found.append(parsed)
+    return found
+
+
 def _within_right_edge(anchor: date | None, newest: list[date], sessions: int) -> bool:
     if anchor is None:
         return False
@@ -428,6 +448,10 @@ def named_patterns(ticker: str, db: Session = Depends(get_db)) -> NamedCheckOut:
     if result is None:
         return NamedCheckOut(ticker=symbol)
     req = result.run.request or {}
+    symbol_hits = [hit for hit in hits if hit.ticker == symbol and _pattern_of(hit)]
+    anchors = [_anchor_date(hit) for hit in symbol_hits]
+    known = [day for day in anchors if day is not None]
+    dates = _ticker_dates_after(db, symbol, min(known)) if known else []
     return NamedCheckOut(
         ticker=symbol,
         as_of=result.run.as_of,
@@ -442,9 +466,9 @@ def named_patterns(ticker: str, db: Session = Depends(get_db)) -> NamedCheckOut:
                 swings=hit.swings or {},
                 run_id=hit.run_id,
                 scanned_at=times.get(hit.run_id),
+                sessions_behind=_sessions_behind(anchor, dates),
             )
-            for hit in hits
-            if hit.ticker == symbol and _pattern_of(hit)
+            for hit, anchor in zip(symbol_hits, anchors, strict=True)
         ],
     )
 
