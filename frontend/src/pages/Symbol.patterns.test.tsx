@@ -115,7 +115,7 @@ describe("Symbol named-pattern readout", () => {
           });
         }
         if (url.includes("/named-patterns")) return json({ ticker: "VHM", as_of: null, patterns: [], matches: [] });
-        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.includes("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
         if (url.endsWith("/page-note")) return json({ body: "" });
         if (url.endsWith("/drawings")) return json([]);
         if (url.includes("/indicators")) return json({ dates: ["2026-09-28"], "sma:20": [10] });
@@ -185,7 +185,7 @@ describe("Symbol named-pattern readout", () => {
           expect(init?.method ?? "GET").toBe("GET");
           return json({ ticker: "VHM", as_of: "2026-09-28", patterns: ["double_bottom"], matches: [match] });
         }
-        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.includes("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
         if (url.endsWith("/page-note")) return json({ body: "" });
         if (url.endsWith("/drawings")) return json([]);
         if (url.includes("/indicators")) return json({ dates: ["2026-09-28"], "sma:20": [10], "rsi:14": [40] });
@@ -255,7 +255,7 @@ describe("Symbol named-pattern readout", () => {
         if (url.includes("/drawings")) {
           return json([{ tool: "horizontal", points: [{ date: "2026-09-28", price: 11 }] }]);
         }
-        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.includes("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
         if (url.endsWith("/page-note")) return json({ body: "" });
         if (url.includes("/indicators")) return json({ dates: ["2026-09-28"], "sma:20": [10] });
         return json({ ticker: "VHM", name: "Vinhomes", board: "HOSE", type: "stock", listed: true, last: 11, change: 0, volume: 100, watchlist: false });
@@ -331,7 +331,7 @@ describe("Symbol named-pattern readout", () => {
             ],
           });
         }
-        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.includes("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
         if (url.endsWith("/page-note")) return json({ body: "" });
         if (url.endsWith("/drawings")) return json([]);
         if (url.includes("/indicators")) return json({ dates: ["2026-09-28"], "sma:20": [10] });
@@ -389,7 +389,7 @@ describe("Symbol named-pattern readout", () => {
         if (url.includes("/named-patterns")) {
           return json({ ticker: "VHM", as_of: "2026-09-28", patterns: ["double_bottom", "double_top"], matches: [fresh, aged] });
         }
-        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.includes("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
         if (url.endsWith("/page-note")) return json({ body: "" });
         if (url.endsWith("/drawings")) return json([]);
         if (url.includes("/indicators")) return json({ dates: ["2026-09-28"], "sma:20": [10] });
@@ -429,7 +429,7 @@ describe("Symbol named-pattern readout", () => {
         if (url.includes("/pattern-catalog")) return json(catalog);
         if (url.includes("/bars")) return json(bars);
         if (url.includes("/named-patterns")) return json({ ticker: "VHM", as_of: null, patterns: [], matches: [] });
-        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.includes("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
         if (url.endsWith("/page-note")) return json({ body: "" });
         if (url.endsWith("/drawings")) return json([]);
         if (url.includes("/indicators")) return json({ dates: ["2026-09-28"] });
