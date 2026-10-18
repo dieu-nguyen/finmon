@@ -24,7 +24,7 @@ function stubFetch(barsFetch?: (url: string, init?: RequestInit) => Promise<Resp
       const url = String(input);
       if (url.includes("/bars")) return barsFetch ? barsFetch(url, init) : json(bars);
       if (url.includes("/indicators")) return json({ dates: ["2026-01-02"], "sma:20": [10] });
-      if (url.endsWith("/company")) return json({ ticker: "TIG", profile: [], statements: {}, ratios: [] });
+      if (url.includes("/company")) return json({ ticker: "TIG", profile: [], statements: {}, ratios: [] });
       if (url.endsWith("/page-note")) return json({ body: "" });
       if (url.endsWith("/drawings")) return json([]);
       if (url.includes("/named-patterns")) return json({ as_of: null, patterns: [], matches: [] });

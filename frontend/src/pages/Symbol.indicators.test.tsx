@@ -77,7 +77,7 @@ describe("Symbol indicator picker", () => {
           if (names.includes("rsi:14")) body["rsi:14"] = [62];
           return json(body);
         }
-        if (url.endsWith("/company")) return json({ ticker: "TIG", profile: [], statements: {}, ratios: [] });
+        if (url.includes("/company")) return json({ ticker: "TIG", profile: [], statements: {}, ratios: [] });
         if (url.endsWith("/page-note")) return json({ body: "" });
         if (url.endsWith("/drawings")) return json([]);
         return json({ ticker: "TIG", name: "Thang Long", board: "HNX", type: "stock", listed: true, last: 11, change: 0.01, volume: 100, watchlist: false });
@@ -160,7 +160,7 @@ describe("Symbol indicator picker", () => {
             signal?.addEventListener("abort", fail, { once: true });
           });
         }
-        if (url.endsWith("/company")) return json(null);
+        if (url.includes("/company")) return json(null);
         if (url.endsWith("/page-note")) return json({ body: "" });
         if (url.endsWith("/drawings")) return json([]);
         return json({ ticker: "TIG", name: "Thang Long", board: "HNX", type: "stock", listed: true, last: 11, change: null, volume: 100, watchlist: false });

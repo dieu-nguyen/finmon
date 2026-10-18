@@ -1,4 +1,4 @@
-import { EmptyState, Table } from "../design-system";
+import { EmptyState, Spinner, Table } from "../design-system";
 
 type Row = Record<string, unknown>;
 
@@ -226,7 +226,13 @@ function StatementSection({ title, rows, specs, ratio }: { title: string; rows: 
   );
 }
 
-export function CompanyPanel({ payload }: { payload: Record<string, unknown> }) {
+export function CompanyPanel({
+  payload,
+  financialsPending = false,
+}: {
+  payload: Record<string, unknown>;
+  financialsPending?: boolean;
+}) {
   const profile = profileRecord(payload.profile);
   const facts = overviewFacts(profile);
   const statements = payload.statements && typeof payload.statements === "object" ? (payload.statements as Record<string, unknown>) : {};
@@ -239,7 +245,7 @@ export function CompanyPanel({ payload }: { payload: Record<string, unknown> }) 
     metricLines(balance, BALANCE).lines.length > 0 ||
     metricLines(cashflow, CASHFLOW).lines.length > 0 ||
     metricLines(ratios, RATIOS).lines.length > 0;
-  if (facts.length === 0 && !hasStatements) return <EmptyState text="Company data unavailable" />;
+  if (facts.length === 0 && !hasStatements && !financialsPending) return <EmptyState text="Company data unavailable" />;
 
   const inline = facts.filter((fact) => !fact.block);
   const blocks = facts.filter((fact) => fact.block);
@@ -271,6 +277,12 @@ export function CompanyPanel({ payload }: { payload: Record<string, unknown> }) 
       {money ? (
         <div className="unit-row">
           <span className="unit-pill">Unit: đồng</span>
+        </div>
+      ) : null}
+      {financialsPending ? (
+        <div className="statement-pending" role="status" aria-label="Loading statements">
+          <Spinner />
+          <span>Loading statements</span>
         </div>
       ) : null}
       {hasStatements ? (

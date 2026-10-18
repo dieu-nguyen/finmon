@@ -48,7 +48,8 @@ describe("Symbol side panel", () => {
         const url = String(input);
         urls.push(url);
         if (url.includes("/bars")) return json([{ date: "2026-01-02", open: 1, high: 2, low: 1, close: 2, volume: 10 }]);
-        if (url.endsWith("/company")) return json(company);
+        if (url.endsWith("/company/profile")) return json({ ticker: "TIG", profile: company.profile });
+        if (url.endsWith("/company/statements")) return json({ ticker: "TIG", statements: company.statements, ratios: company.ratios });
         if (url.endsWith("/page-note")) return json({ body: "thesis" });
         if (url.includes("/indicators")) return json({ "sma:20": [null] });
         if (url.endsWith("/drawings")) return json([]);
@@ -72,7 +73,8 @@ describe("Symbol side panel", () => {
     expect(tabs[tabs.length - 1]).toHaveTextContent("Scan");
     expect(tabs[0]).toHaveStyle({ fontWeight: "600" });
     expect(screen.queryByRole("combobox", { name: "Patterns" })).not.toBeInTheDocument();
-    expect(urls.some((url) => url.endsWith("/company"))).toBe(true);
+    expect(urls.some((url) => url.endsWith("/company/profile"))).toBe(true);
+    expect(urls.some((url) => url.endsWith("/company/statements"))).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Note" }));
     expect(screen.getByLabelText("Note")).toHaveValue("thesis");
@@ -88,5 +90,38 @@ describe("Symbol side panel", () => {
     expect(scan.getByRole("combobox", { name: "Patterns" }).closest(".rail")).not.toBeNull();
     expect(scan.getByRole("combobox", { name: "Patterns" }).closest(".chart-frame")).toBeNull();
     expect(document.querySelector(".symbol-page > .scan-bar")).toBeNull();
+  });
+
+  it("shows the company name while statements are still loading", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        if (url.includes("/bars")) return json([{ date: "2026-01-02", open: 1, high: 2, low: 1, close: 2, volume: 10 }]);
+        if (url.endsWith("/company/profile")) return json({ ticker: "TIG", profile: company.profile });
+        if (url.endsWith("/company/statements")) {
+          return gate.then(() => json({ ticker: "TIG", statements: company.statements, ratios: company.ratios }));
+        }
+        if (url.endsWith("/page-note")) return json({ body: "" });
+        if (url.includes("/indicators")) return json({ "sma:20": [null] });
+        if (url.endsWith("/drawings")) return json([]);
+        if (url.includes("/named-patterns")) return json({ as_of: null, patterns: [], matches: [] });
+        return json({ ticker: "TIG", name: "Thang Long", board: "HNX", type: "stock", listed: true, last: 2, change: 0.01, volume: 10, watchlist: false });
+      }),
+    );
+
+    renderSymbol();
+
+    expect(await screen.findByText("Công ty Cổ phần Tập đoàn Đầu tư Thăng Long")).toBeInTheDocument();
+    expect(screen.queryByText("Revenue")).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading statements" })).toBeInTheDocument();
+
+    release();
+    expect(await screen.findByText("Revenue")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading statements" })).not.toBeInTheDocument();
   });
 });

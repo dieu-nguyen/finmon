@@ -179,7 +179,11 @@ export const api = {
   createAlert: (body: Partial<Alert> & { ticker: string; op: string; price: number }) =>
     req<Alert>("/api/alerts", { method: "POST", body: JSON.stringify(body) }),
   deleteAlert: (id: number) => req(`/api/alerts/${id}`, { method: "DELETE" }),
-  company: (ticker: string) => req<Record<string, unknown>>(`/api/symbols/${ticker}/company`),
+  company: (ticker: string, init?: RequestInit) => req<Record<string, unknown>>(`/api/symbols/${ticker}/company`, init),
+  companyProfile: (ticker: string, init?: RequestInit) =>
+    req<Record<string, unknown>>(`/api/symbols/${ticker}/company/profile`, init),
+  companyStatements: (ticker: string, init?: RequestInit) =>
+    req<Record<string, unknown>>(`/api/symbols/${ticker}/company/statements`, init),
   patterns: () => req<Pattern[]>("/api/patterns"),
   patternHits: (id: number, query = "", init?: RequestInit) => req<PatternHits>(`/api/patterns/${id}/hits${query}`, init),
   scanLookalike: (id: number) => req<PatternHits>(`/api/patterns/${id}/scan`, { method: "POST" }),
