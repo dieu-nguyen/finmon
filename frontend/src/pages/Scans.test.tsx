@@ -130,6 +130,10 @@ describe("Scans named patterns", () => {
     );
 
     expect(await screen.findByRole("link", { name: "VHM" })).toHaveAttribute("href", "/symbol/VHM?pattern=double_bottom");
+    const chart = screen.getByRole("link", { name: "Chart" });
+    expect(chart).toHaveAttribute("href", "/symbol/VHM?pattern=double_bottom");
+    expect(chart).toHaveAttribute("target", "_blank");
+    expect(chart).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.getAllByText("Forming").length).toBeGreaterThan(0);
     const named = within(screen.getByRole("region", { name: "Named patterns" }));
     const summary = within(named.getByRole("region", { name: "Named pattern summary" }));

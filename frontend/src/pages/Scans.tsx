@@ -550,7 +550,12 @@ export function Scans() {
                     <td className="ticker-cell">{typeof hit.run_id === "number" ? hit.run_id : ""}</td>
                     <td className="ticker-cell">{formatScannedAt(hit.scanned_at)}</td>
                     <td className="center">
-                      <Link className="text-btn" to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}>
+                      <Link
+                        className="text-btn"
+                        to={`/symbol/${hit.ticker}?pattern=${hit.pattern ?? ""}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
                         Chart
                       </Link>
                     </td>
