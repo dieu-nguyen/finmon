@@ -2,11 +2,12 @@ import type { ECharts } from "echarts";
 import ReactECharts from "echarts-for-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Bar } from "../api";
-import { IconButton, formatDong } from "../design-system";
+import { IconButton, Select, formatDong } from "../design-system";
 import { ToolGlyph } from "../design-system/icons";
 import { buildDailyOption, type ChartColors } from "./dailyOption";
 import { barIndexFromPixel, drawingsAfterClick, type Drawing, type DrawingTool } from "./drawings";
 import type { PatternMark } from "./patternMarks";
+import { BAR_OPTIONS, DEFAULT_BAR_SIZE, DEFAULT_RANGE_MONTHS, RANGE_OPTIONS, type BarSize } from "./chartWindow";
 import { DEFAULT_INDICATOR_IDS } from "./indicators";
 import { IndicatorPicker } from "./IndicatorPicker";
 
@@ -74,6 +75,10 @@ export function DailyChart({
   tool,
   onTool,
   onDrawings,
+  rangeMonths = DEFAULT_RANGE_MONTHS,
+  barSize = DEFAULT_BAR_SIZE,
+  onRangeMonths,
+  onBarSize,
   refPrice,
   ceiling,
   floor,
@@ -88,6 +93,10 @@ export function DailyChart({
   tool: DrawingTool;
   onTool: (t: DrawingTool) => void;
   onDrawings: (d: Drawing[]) => void;
+  rangeMonths?: number;
+  barSize?: BarSize;
+  onRangeMonths?: (months: number) => void;
+  onBarSize?: (size: BarSize) => void;
   refPrice?: number | null;
   ceiling?: number | null;
   floor?: number | null;
@@ -136,6 +145,30 @@ export function DailyChart({
           </IconButton>
         ))}
         <span className="tool-sep" />
+        <span className="chart-window">
+          <span>Range</span>
+          <Select
+            aria-label="Range"
+            value={String(rangeMonths)}
+            onChange={(event) => onRangeMonths?.(Number(event.target.value))}
+          >
+            {RANGE_OPTIONS.map((option) => (
+              <option key={option.months} value={option.months}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </span>
+        <span className="chart-window">
+          <span>Bars</span>
+          <Select aria-label="Bars" value={barSize} onChange={(event) => onBarSize?.(event.target.value as BarSize)}>
+            {BAR_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </span>
         <IndicatorPicker value={indicatorIds} onChange={onIndicator} />
       </div>
       {bar ? (

@@ -120,13 +120,11 @@ The latest two bars are an index lookup of 2 rows per ticker on the page, on `uq
 
 ## 5. Chart fetch
 
-`GET /api/symbols/{ticker}/bars` already defaults to about one year (`to` = today, `from` = today − 365 days). Keep that.
+`GET /api/symbols/{ticker}/bars` still defaults to about one year when `from` and `to` are omitted (`to` = today, `from` = today − 365 days). The symbol chart sends `months` instead, counted back from the newest `daily_bar` date: 12, 15, 18, 21, 24, then 36 through 120 by 12. `interval` is `day` (the default), `week`, or `month`. Week and month candles are aggregated from those daily rows in Asia/Ho_Chi_Minh. The request does not call DNSE. If the stored history is shorter than `months`, the response is the rows that exist.
 
-`GET /api/symbols/{ticker}/indicators` today loads every bar for the ticker and returns a full-length series. The chart only has one year of candles, so SMA is not aligned with those dates.
+`GET /api/symbols/{ticker}/indicators` accepts the same `from`, `to`, `months`, and `interval` as bars. Load enough daily bars before `from` to warm up the largest requested period. Cover weekends: a simple bound is period × 3 calendar days, or enough prior rows for that period. For `macd`, that period is the slow length used by `macd()` (26) when the request does not pass one. Aggregate warmup and the visible window separately, compute on both, then return `dates` and each series only for the visible candles, so each series length matches that same window.
 
-Indicators accept the same `from` and `to` as bars. Load enough bars before `from` to warm up the largest requested period. Cover weekends: a simple bound is period × 3 calendar days, or enough prior rows for that period. For `macd`, that period is the slow length used by `macd()` (26) when the request does not pass one. Compute on the warmup plus the window, then return `dates` and each series only for dates inside `from`..`to`, so each series length matches the candle array for that same window.
-
-The symbol page passes the same `from` and `to` to both calls. Omit both to use the shared one-year default.
+The symbol page passes the same `months` and `interval` to both calls. Omit `months` to use the shared one-year `from`/`to` default.
 
 The company tab stays lazy. The 24-hour `company_cache` stays.
 

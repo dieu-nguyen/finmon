@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SymbolPage } from "./Symbol";
@@ -101,7 +101,8 @@ describe("Symbol indicator picker", () => {
     });
 
     fireEvent.click(box);
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+    const menu = within(screen.getByRole("listbox"));
+    expect(menu.getAllByRole("option").map((option) => option.textContent)).toEqual([
       "SMA (20)",
       "EMA (20)",
       "Bollinger (20, 2)",
@@ -111,7 +112,7 @@ describe("Symbol indicator picker", () => {
       "ATR (14)",
     ]);
     fireEvent.change(screen.getByRole("combobox", { name: "Indicator" }), { target: { value: "rsi" } });
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["RSI (14)"]);
+    expect(within(screen.getByRole("listbox")).getAllByRole("option").map((option) => option.textContent)).toEqual(["RSI (14)"]);
     fireEvent.click(screen.getByRole("option", { name: "RSI (14)" }));
     expect(screen.getByRole("listbox")).toBeInTheDocument();
 
