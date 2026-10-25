@@ -689,6 +689,13 @@ h1, h2, h3 { margin: 0; }
 .inset-input { background: var(--bg); }
 
 .company { display: grid; gap: var(--space-4); min-width: 0; }
+.statement-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
 .overview {
   background: var(--bg-elev);
   border: 1px solid var(--border);

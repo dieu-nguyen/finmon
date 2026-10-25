@@ -51,8 +51,39 @@ function asCheck(body: unknown): Pick<NamedCheck, "as_of" | "patterns" | "matche
 
 /** Shared by the candle request and the indicator request for the chart window. */
 
+function CompanyTab({ profile, financials }: { profile: CompanyPart; financials: CompanyPart }) {
+  const view = companyView(profile, financials);
+  if (!view) {
+    return view === null ? <EmptyState text="Company data unavailable" /> : <Spinner />;
+  }
+  return <CompanyPanel payload={view} financialsPending={financials === undefined} />;
+}
+
 function isAbortError(error: unknown): boolean {
   return (error instanceof DOMException || error instanceof Error) && error.name === "AbortError";
+}
+
+type CompanyPart = Record<string, unknown> | null | undefined;
+
+function asCompanyPart(body: unknown): Record<string, unknown> | null {
+  return body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+}
+
+/** Profile can paint before statements. Undefined means that part is still loading. */
+function companyView(profile: CompanyPart, financials: CompanyPart): Record<string, unknown> | null | undefined {
+  const profileReady = profile != null;
+  const financialsReady = financials != null;
+  if (!profileReady && !financialsReady) {
+    return profile === undefined || financials === undefined ? undefined : null;
+  }
+  const profileBody = profileReady ? profile : {};
+  const financialBody = financialsReady ? financials : {};
+  return {
+    ticker: profileBody.ticker ?? financialBody.ticker,
+    profile: "profile" in profileBody ? profileBody.profile : [],
+    statements: "statements" in financialBody ? financialBody.statements : {},
+    ratios: "ratios" in financialBody ? financialBody.ratios : [],
+  };
 }
 
 export function SymbolPage() {
@@ -71,7 +102,8 @@ export function SymbolPage() {
   const [tab, setTab] = useState("Company");
   const [note, setNote] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  const [company, setCompany] = useState<Record<string, unknown> | null | undefined>(undefined);
+  const [profilePart, setProfilePart] = useState<CompanyPart>(undefined);
+  const [statementPart, setStatementPart] = useState<CompanyPart>(undefined);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const saveTimer = useRef<number | null>(null);
   const [tool, setTool] = useState<DrawingTool>("pan");
@@ -172,18 +204,31 @@ export function SymbolPage() {
 
   useEffect(() => {
     if (tab !== "Company") return;
-    let cancelled = false;
-    setCompany(undefined);
+    const ctrl = new AbortController();
+    let active = true;
+    setProfilePart(undefined);
+    setStatementPart(undefined);
     api
-      .company(t)
-      .then((p) => {
-        if (!cancelled) setCompany(p);
+      .companyProfile(t, { signal: ctrl.signal })
+      .then((body) => {
+        if (active) setProfilePart(asCompanyPart(body));
       })
-      .catch(() => {
-        if (!cancelled) setCompany(null);
+      .catch((error: unknown) => {
+        if (!active || isAbortError(error)) return;
+        setProfilePart(null);
+      });
+    api
+      .companyStatements(t, { signal: ctrl.signal })
+      .then((body) => {
+        if (active) setStatementPart(asCompanyPart(body));
+      })
+      .catch((error: unknown) => {
+        if (!active || isAbortError(error)) return;
+        setStatementPart(null);
       });
     return () => {
-      cancelled = true;
+      active = false;
+      ctrl.abort();
     };
   }, [tab, t]);
 
@@ -389,7 +434,7 @@ export function SymbolPage() {
           <Tabs stretch tabs={SIDE_TABS} value={tab} onChange={setTab} />
           <div className="rail-body">
             {tab === "Company" ? (
-              company ? <CompanyPanel payload={company} /> : company === null ? <EmptyState text="Company data unavailable" /> : <Spinner />
+              <CompanyTab profile={profilePart} financials={statementPart} />
             ) : null}
             {tab === "Note" ? (
               <>

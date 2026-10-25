@@ -14,7 +14,7 @@ def test_company_failure_does_not_break_bars(client, db, monkeypatch):
     def boom(self, ticker: str):
         raise RuntimeError("down")
 
-    monkeypatch.setattr(vnstock_client.VnstockClient, "fetch", boom)
+    monkeypatch.setattr(vnstock_client.VnstockClient, "start", boom)
     from datetime import date
 
     from app.models import DailyBar, Symbol
@@ -38,6 +38,9 @@ def test_company_failure_does_not_break_bars(client, db, monkeypatch):
     fail = client.get("/api/symbols/VCB/company")
     assert fail.status_code == 503
     assert fail.json()["detail"]["error"] == "unavailable"
+    profile = client.get("/api/symbols/VCB/company/profile")
+    assert profile.status_code == 503
+    assert profile.json()["detail"]["error"] == "unavailable"
 
 
 def test_evaluate_marks_fired(db):
