@@ -357,6 +357,70 @@ describe("Symbol named-pattern readout", () => {
     });
   });
 
+  it("shows session age and marks a match past 10 sessions", async () => {
+    const fresh = {
+      pattern: "double_bottom",
+      state: "forming",
+      score: 0.8,
+      window_start: "2026-09-20",
+      window_end: "2026-09-28",
+      run_id: 4,
+      scanned_at: "2026-10-17T07:05:00",
+      sessions_behind: 8,
+      swings: { pattern: "double_bottom", points: [{ role: "low", date: "2026-09-20", price: 90 }], neckline: [] },
+    };
+    const aged = {
+      pattern: "double_top",
+      state: "confirmed",
+      score: 0.74,
+      window_start: "2026-08-01",
+      window_end: "2026-09-28",
+      run_id: 3,
+      scanned_at: "2026-10-16T01:30:00",
+      sessions_behind: 11,
+      swings: { pattern: "double_top", points: [{ role: "high", date: "2026-08-01", price: 140 }], neckline: [] },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        const url = String(input);
+        if (url.includes("/pattern-catalog")) return json(catalog);
+        if (url.includes("/bars")) return json(bars);
+        if (url.includes("/named-patterns")) {
+          return json({ ticker: "VHM", as_of: "2026-09-28", patterns: ["double_bottom", "double_top"], matches: [fresh, aged] });
+        }
+        if (url.endsWith("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.endsWith("/page-note")) return json({ body: "" });
+        if (url.endsWith("/drawings")) return json([]);
+        if (url.includes("/indicators")) return json({ dates: ["2026-09-28"], "sma:20": [10] });
+        return json({ ticker: "VHM", name: "Vinhomes", board: "HOSE", type: "stock", listed: true, last: 11, change: 0, volume: 100, watchlist: false });
+      }),
+    );
+
+    renderSymbol();
+    const order = tabs();
+    expect(order.map((button) => button.textContent)).toEqual(["Company", "Note", "Alert", "Scan"]);
+    const scan = openScan();
+    const young = await scan.findByRole("button", { name: /8 sessions/ });
+    const old = scan.getByRole("button", { name: /11 sessions/ });
+    expect(young).toHaveTextContent("8 sessions");
+    expect(young).toHaveTextContent("Scanned 17 Oct 2026, 14:05");
+    expect(young).not.toHaveTextContent("Past 10");
+    expect(young).not.toHaveClass("past");
+    expect(old).toHaveTextContent("11 sessions");
+    expect(old).toHaveTextContent("Past 10");
+    expect(old).toHaveTextContent("Scanned 16 Oct 2026, 08:30");
+    expect(old).toHaveClass("past");
+    expect(scan.getByRole("button", { name: "Scan" })).toBeInTheDocument();
+
+    fireEvent.click(old);
+    await waitFor(() => {
+      const marks = JSON.parse(screen.getByTestId("chart-option").getAttribute("data-marks") || "[]") as { coord?: string[] }[];
+      expect(marks.some((mark) => mark.coord?.[0] === "2026-08-01")).toBe(true);
+    });
+    expect(old).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("lists all 22 patterns in the scan filter and leaves each one selectable", async () => {
     vi.stubGlobal(
       "fetch",

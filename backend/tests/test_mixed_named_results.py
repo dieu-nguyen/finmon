@@ -280,30 +280,41 @@ def test_stored_hits_stay_without_counting_sessions_on_read(client, db, engine, 
             ("GONE", 0.7, _swings(days[0], days[18])),
         ],
     )
-    statements: list[str] = []
-
-    def before(_conn, _cursor, statement, _parameters, _context, _executemany):
-        statements.append(statement)
-
-    event.listen(engine, "before_cursor_execute", before)
+    statements: list[tuple[str, object]] = []
+    hook = _listen(engine, statements)
     try:
         listed = client.get("/api/named-scans").json()["hits"]
-        far = client.get("/api/symbols/FAR/named-patterns").json()["matches"]
     finally:
-        event.remove(engine, "before_cursor_execute", before)
+        event.remove(engine, "before_cursor_execute", hook)
     assert calls["windows"] == 0
     assert [hit["ticker"] for hit in listed] == ["LATE", "NEAR", "FAR", "GONE"]
     assert all(hit["run_id"] == run.id for hit in listed)
+    assert not any("daily_bar" in statement.lower() for statement, _params in statements)
+    statements.clear()
+    hook = _listen(engine, statements)
+    try:
+        far = client.get("/api/symbols/FAR/named-patterns").json()["matches"]
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
     near = next(hit for hit in listed if hit["ticker"] == "NEAR")
     symbol = client.get("/api/symbols/NEAR/named-patterns").json()["matches"][0]
     assert symbol["run_id"] == near["run_id"]
     assert symbol["score"] == near["score"]
     assert symbol["pattern"] == near["pattern"]
+    assert symbol["sessions_behind"] == 10
     assert far[0]["run_id"] == run.id
     assert far[0]["score"] == 0.8
+    assert far[0]["sessions_behind"] == 11
     stored = {hit.ticker for hit in db.scalars(select(ScanHit).where(ScanHit.run_id == run.id)).all()}
     assert stored == {"NEAR", "FAR", "LATE", "GONE"}
-    assert not any("daily_bar" in statement.lower() for statement in statements)
+    daily = [(statement, params) for statement, params in statements if "daily_bar" in statement.lower()]
+    assert len(daily) == 1
+    statement, params = daily[0]
+    blob = f"{statement} {params!r}".upper()
+    assert "FAR" in blob
+    assert "NEAR" not in blob and "LATE" not in blob and "GONE" not in blob
+    assert "LIMIT" not in statement.upper()
+    assert "OPEN" not in statement.upper()
 
 
 def test_market_run_without_compared_returns_stored_hits_until_a_later_run_replaces_a_pair(client, db, engine, monkeypatch):
@@ -344,26 +355,33 @@ def test_market_run_without_compared_returns_stored_hits_until_a_later_run_repla
         },
         [],
     )
-    statements: list[str] = []
-
-    def before(_conn, _cursor, statement, _parameters, _context, _executemany):
-        statements.append(statement)
-
-    event.listen(engine, "before_cursor_execute", before)
+    statements: list[tuple[str, object]] = []
+    hook = _listen(engine, statements)
     try:
         listed = client.get("/api/named-scans").json()["hits"]
-        kept = client.get("/api/symbols/KEEP/named-patterns").json()["matches"]
-        dropped = client.get("/api/symbols/DROP/named-patterns").json()["matches"]
     finally:
-        event.remove(engine, "before_cursor_execute", before)
+        event.remove(engine, "before_cursor_execute", hook)
     assert calls["windows"] == 0
     assert [hit["ticker"] for hit in listed] == ["KEEP", "STALE"]
     assert all(hit["run_id"] == legacy.id for hit in listed)
+    assert not any("daily_bar" in statement.lower() for statement, _params in statements)
+    statements.clear()
+    hook = _listen(engine, statements)
+    try:
+        kept = client.get("/api/symbols/KEEP/named-patterns").json()["matches"]
+        dropped = client.get("/api/symbols/DROP/named-patterns").json()["matches"]
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
     assert kept[0]["run_id"] == legacy.id
     assert kept[0]["score"] == 0.9
+    assert kept[0]["sessions_behind"] == 1
     assert dropped == []
     assert newer.id != legacy.id
-    assert not any("daily_bar" in statement.lower() for statement in statements)
+    daily = [(statement, params) for statement, params in statements if "daily_bar" in statement.lower()]
+    assert len(daily) == 1
+    blob = f"{daily[0][0]} {daily[0][1]!r}".upper()
+    assert "KEEP" in blob
+    assert "STALE" not in blob and "DROP" not in blob
 
 
 def test_old_market_run_without_compared_covers_only_its_hits(client, db, monkeypatch):
@@ -529,6 +547,69 @@ def test_match_list_filters_right_edge_and_state_without_load_windows(client, db
     assert "SURE" in state_blob
     assert "NEAR" not in state_blob and "FAR" not in state_blob and "EXTRA" not in state_blob
     assert client.get("/api/symbols/FAR/named-patterns").json()["matches"][0]["score"] == 0.7
+
+
+def test_symbol_scan_counts_sessions_after_the_anchor_and_keeps_older_hits(client, db, engine, monkeypatch):
+    calls = {"windows": 0}
+
+    def windows(*_args, **_kwargs):
+        calls["windows"] += 1
+        return {}, 0
+
+    monkeypatch.setattr("app.jobs.pattern_scan.load_windows", windows)
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(30)]
+    fresh = days[-9]
+    aged = days[-12]
+    pattern = PatternDef(name="Named patterns", kind="named", spec={"manual": True}, schedule="manual", enabled=False)
+    db.add(pattern)
+    db.add(_symbol("ACV", name="Airports"))
+    db.add(_symbol("OTHER", name="Other"))
+    db.add_all(_bars("ACV", days))
+    db.add_all(_bars("OTHER", days))
+    db.commit()
+    current = _swings(fresh)
+    current["pattern"] = "double_bottom"
+    older = _swings(days[0], aged)
+    older["pattern"] = "double_top"
+    other = _swings(days[-1])
+    _store(
+        db,
+        pattern,
+        {
+            "mode": "market",
+            "patterns": ["double_bottom", "double_top"],
+            "scope": "all",
+            "tickers": [],
+            "compared": ["ACV", "OTHER"],
+        },
+        [
+            ("ACV", 0.91, current),
+            ("ACV", 0.8, older),
+            ("OTHER", 0.7, other),
+        ],
+    )
+    statements: list[tuple[str, object]] = []
+    hook = _listen(engine, statements)
+    try:
+        body = client.get("/api/symbols/ACV/named-patterns").json()
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
+    assert calls["windows"] == 0
+    matches = {row["pattern"]: row for row in body["matches"]}
+    assert set(matches) == {"double_bottom", "double_top"}
+    assert matches["double_bottom"]["sessions_behind"] == 8
+    assert matches["double_top"]["sessions_behind"] == 11
+    daily = [(statement, params) for statement, params in statements if "daily_bar" in statement.lower()]
+    assert len(daily) == 1
+    statement, params = daily[0]
+    blob = f"{statement} {params!r}".upper()
+    assert "ACV" in blob
+    assert "OTHER" not in blob
+    assert "LIMIT" not in statement.upper()
+    assert "OPEN" not in statement.upper()
+    listed = client.get("/api/named-scans", params={"right_edge": 10}).json()["hits"]
+    assert not any(hit["ticker"] == "ACV" and hit["pattern"] == "double_top" for hit in listed)
+    assert any(hit["ticker"] == "ACV" and hit["pattern"] == "double_bottom" for hit in listed)
 
 
 def test_symbol_keeps_two_patterns_from_two_runs_with_each_run_time(client, db):

@@ -139,6 +139,7 @@ class NamedMatchOut(BaseModel):
     swings: dict[str, Any]
     run_id: int | None = None
     scanned_at: datetime | None = None
+    sessions_behind: int | None = None
 
 
 class NamedCheckOut(BaseModel):
