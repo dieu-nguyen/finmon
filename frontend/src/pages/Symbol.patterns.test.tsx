@@ -376,7 +376,8 @@ describe("Symbol named-pattern readout", () => {
     renderSymbol();
     const scan = openScan();
     fireEvent.click(await scan.findByRole("combobox", { name: "Patterns" }));
-    const options = () => screen.getAllByRole("option");
+    const menu = () => screen.getByRole("listbox", { name: "Patterns" });
+    const options = () => within(menu()).getAllByRole("option");
     const optionIds = options().map((option) => option.id);
     expect(PATTERN_GUIDE.map((pattern) => pattern.id).sort()).toEqual([...IMPLEMENTED].sort());
     expect(options()).toHaveLength(IMPLEMENTED.length);
@@ -387,10 +388,10 @@ describe("Symbol named-pattern readout", () => {
       expect(option).not.toHaveAttribute("aria-disabled");
       expect(option).not.toHaveTextContent("Not available yet");
     }
-    const wedge = screen.getByRole("option", { name: "Rising wedge" });
+    const wedge = within(menu()).getByRole("option", { name: "Rising wedge" });
     fireEvent.click(wedge);
     expect(wedge).toHaveAttribute("aria-selected", "true");
     fireEvent.change(scan.getByRole("combobox", { name: "Patterns" }), { target: { value: "" } });
-    expect(screen.getAllByRole("option")).toHaveLength(IMPLEMENTED.length);
+    expect(within(menu()).getAllByRole("option")).toHaveLength(IMPLEMENTED.length);
   });
 });

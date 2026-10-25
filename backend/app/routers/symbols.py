@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, or_, select, union_all
 from sqlalchemy.orm import Session
 
-from app.bars_window import resolve_window
+from app.chart_bars import INTERVALS, aggregate_candles, chart_window
 from app.db import get_db
 from app.models import DailyBar, QuoteSnapshot, Symbol, WatchlistItem
 from app.schemas import BarOut, SymbolPage, SymbolRow
@@ -190,11 +190,19 @@ def symbol_bars(
     db: Session = Depends(get_db),
     from_: date | None = Query(default=None, alias="from"),
     to: date | None = None,
+    months: int | None = Query(default=None),
+    interval: str = Query(default="day"),
 ) -> list[BarOut]:
     ticker = ticker.upper()
     if db.get(Symbol, ticker) is None and db.scalars(select(DailyBar).where(DailyBar.ticker == ticker)).first() is None:
         raise HTTPException(404, "unknown ticker")
-    from_, to = resolve_window(from_, to)
+    size = interval.strip().lower()
+    if size not in INTERVALS:
+        raise HTTPException(400, "invalid interval")
+    try:
+        from_, to = chart_window(db, ticker, from_, to, months)
+    except ValueError as exc:
+        raise HTTPException(400, "invalid months") from exc
     bars = db.scalars(
         select(DailyBar)
         .where(DailyBar.ticker == ticker, DailyBar.date >= from_, DailyBar.date <= to)
@@ -202,13 +210,13 @@ def symbol_bars(
     ).all()
     return [
         BarOut(
-            date=b.date,
-            open=b.open,
-            high=b.high,
-            low=b.low,
-            close=b.close,
-            volume=b.volume,
-            value=b.value,
+            date=candle.date,
+            open=candle.open,
+            high=candle.high,
+            low=candle.low,
+            close=candle.close,
+            volume=candle.volume,
+            value=candle.value,
         )
-        for b in bars
+        for candle in aggregate_candles(bars, size)
     ]

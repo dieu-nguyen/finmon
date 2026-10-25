@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.bars_window import resolve_window
+from app.chart_bars import INTERVALS, chart_window, split_aggregated
 from app.db import get_db
 from app.indicators import atr, bollinger, ema, macd, rsi, sma, volume_ma
 from app.models import DailyBar
@@ -48,19 +48,31 @@ def indicators(
     names: str = Query(default="sma:20"),
     from_: date | None = Query(default=None, alias="from"),
     to: date | None = None,
+    months: int | None = Query(default=None),
+    interval: str = Query(default="day"),
 ) -> dict:
     ticker = ticker.upper()
-    from_, to = resolve_window(from_, to)
+    size = interval.strip().lower()
+    if size not in INTERVALS:
+        raise HTTPException(400, "invalid interval")
+    try:
+        from_, to = chart_window(db, ticker, from_, to, months)
+    except ValueError as exc:
+        raise HTTPException(400, "invalid months") from exc
     period = _warmup_period(names)
     warmup_from = from_ - timedelta(days=period * 3)
-    bars = db.scalars(
+    daily = db.scalars(
         select(DailyBar)
         .where(DailyBar.ticker == ticker, DailyBar.date >= warmup_from, DailyBar.date <= to)
         .order_by(DailyBar.date)
     ).all()
-    if not bars:
+    if not daily:
         raise HTTPException(404, "no bars")
-    indexes = [i for i, bar in enumerate(bars) if from_ <= bar.date <= to]
+    warmup, visible = split_aggregated(daily, from_, to, size)
+    bars = warmup + visible
+    indexes = list(range(len(warmup), len(bars)))
+    if not indexes:
+        raise HTTPException(404, "no bars")
     closes = [float(b.close) for b in bars]
     highs = [float(b.high) for b in bars]
     lows = [float(b.low) for b in bars]
