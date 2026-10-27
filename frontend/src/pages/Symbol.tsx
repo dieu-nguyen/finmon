@@ -483,7 +483,14 @@ export function SymbolPage() {
             ) : null}
             {tab === "Scan" ? (
               <div className="scan-panel" aria-label="Named patterns">
-                <MultiSelect label="Patterns" placeholder="Patterns" options={patternOptions} value={selectedPatterns} onChange={setSelectedPatterns} />
+                <MultiSelect
+                  label="Patterns"
+                  placeholder="Patterns"
+                  options={patternOptions}
+                  value={selectedPatterns}
+                  onChange={setSelectedPatterns}
+                  all={{ mode: "select" }}
+                />
                 <Button type="button" disabled={selectedPatterns.length === 0 || scanning} onClick={() => void runNamedScan()}>
                   {scanning ? "Scanning" : "Scan"}
                 </Button>

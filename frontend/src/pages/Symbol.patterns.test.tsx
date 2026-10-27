@@ -444,7 +444,9 @@ describe("Symbol named-pattern readout", () => {
     const options = () => within(menu()).getAllByRole("option");
     const optionIds = options().map((option) => option.id);
     expect(PATTERN_GUIDE.map((pattern) => pattern.id).sort()).toEqual([...IMPLEMENTED].sort());
-    expect(options()).toHaveLength(IMPLEMENTED.length);
+    expect(options()[0]).toHaveTextContent("All");
+    expect(options()[0]).toHaveAttribute("aria-selected", "false");
+    expect(options()).toHaveLength(IMPLEMENTED.length + 1);
     for (const id of IMPLEMENTED) {
       const option = options().find((row) => row.id.endsWith(`-${id}`));
       expect(optionIds.some((optionId) => optionId.endsWith(`-${id}`))).toBe(true);
@@ -456,6 +458,58 @@ describe("Symbol named-pattern readout", () => {
     fireEvent.click(wedge);
     expect(wedge).toHaveAttribute("aria-selected", "true");
     fireEvent.change(scan.getByRole("combobox", { name: "Patterns" }), { target: { value: "" } });
-    expect(within(menu()).getAllByRole("option")).toHaveLength(IMPLEMENTED.length);
+    expect(within(menu()).getAllByRole("option")).toHaveLength(IMPLEMENTED.length + 1);
+  });
+
+  it("selects every pattern from All and still scans only this symbol", async () => {
+    const posts: { url: string; patterns: string[] }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/pattern-catalog")) return json(catalog);
+        if (url.includes("/bars")) return json(bars);
+        if (url.includes("/named-patterns") && method === "POST") {
+          posts.push({ url, patterns: (JSON.parse(String(init?.body)) as { patterns: string[] }).patterns });
+          return json({ ticker: "VHM", as_of: "2026-09-28", patterns: posts[posts.length - 1]?.patterns ?? [], matches: [] });
+        }
+        if (url.includes("/named-patterns")) return json({ ticker: "VHM", as_of: null, patterns: [], matches: [] });
+        if (url.includes("/company")) return json({ ticker: "VHM", profile: [], statements: {}, ratios: [] });
+        if (url.endsWith("/page-note")) return json({ body: "" });
+        if (url.endsWith("/drawings")) return json([]);
+        if (url.includes("/indicators")) return json({ dates: ["2026-09-28"] });
+        return json({ ticker: "VHM", name: "Vinhomes", board: "HOSE", type: "stock", listed: true, last: 11, change: 0, volume: 100, watchlist: false });
+      }),
+    );
+
+    renderSymbol();
+    const scan = openScan();
+    fireEvent.click(await scan.findByRole("combobox", { name: "Patterns" }));
+    const menu = () => screen.getByRole("listbox", { name: "Patterns" });
+    fireEvent.click(within(menu()).getByRole("option", { name: "All" }));
+    expect(within(menu()).getByRole("option", { name: "All" })).toHaveAttribute("aria-selected", "true");
+    expect(within(menu()).getByRole("option", { name: "Rising wedge" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(scan.getByRole("combobox", { name: "Patterns" }), { key: "Escape" });
+    const closed = scan.getByRole("combobox", { name: "Patterns" });
+    expect(closed).toHaveTextContent("All");
+    expect(closed).not.toHaveTextContent("Rising wedge");
+    expect(posts).toHaveLength(0);
+
+    fireEvent.click(closed);
+    fireEvent.click(within(menu()).getByRole("option", { name: "Rising wedge" }));
+    expect(within(menu()).getByRole("option", { name: "All" })).toHaveAttribute("aria-selected", "false");
+    expect(within(menu()).getByRole("option", { name: "Double bottom" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(scan.getByRole("combobox", { name: "Patterns" }), { key: "Escape" });
+    const after = scan.getByRole("combobox", { name: "Patterns" });
+    expect(within(after).queryByText("All")).not.toBeInTheDocument();
+    expect(within(after).getByText("Double bottom")).toBeInTheDocument();
+    expect(within(after).queryByText("Rising wedge")).not.toBeInTheDocument();
+    expect(posts).toHaveLength(0);
+
+    fireEvent.click(scan.getByRole("button", { name: "Scan" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]?.url).toContain("/api/symbols/VHM/named-patterns");
+    expect(posts[0]?.patterns).toEqual(PATTERN_GUIDE.map((row) => row.id).filter((id) => id !== "rising_wedge"));
   });
 });
