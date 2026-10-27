@@ -53,6 +53,88 @@ h1, h2, h3 { margin: 0; }
   grid-template-columns: var(--nav-w) minmax(0, 1fr);
   min-height: 0;
 }
+.shell-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+.market-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: var(--space-2);
+  align-items: stretch;
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.strip-cell {
+  min-height: 84px;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-decoration: none;
+  color: inherit;
+}
+.strip-cell-empty { background: var(--bg-elev); }
+.strip-kicker {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.strip-close {
+  font-family: var(--font-num);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.strip-change {
+  font-family: var(--font-num);
+  font-size: var(--fs-xs);
+}
+.strip-cell.up .strip-close,
+.strip-cell.up .strip-change { color: var(--up); }
+.strip-cell.down .strip-close,
+.strip-cell.down .strip-change { color: var(--down); }
+.strip-cell.flat .strip-close,
+.strip-cell.flat .strip-change { color: var(--text-muted); }
+.strip-meta {
+  font-family: var(--font-num);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.strip-meta.up { color: var(--up); }
+.strip-meta.down { color: var(--down); }
+.strip-missing {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.strip-series { display: block; margin-top: auto; }
+.strip-quiet {
+  grid-column: 1 / 4;
+  margin: 0;
+  align-self: center;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.strip-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+.strip-asof {
+  color: var(--text-muted);
+  font-family: var(--font-num);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
 .nav {
   background: var(--bg-elev);
   border-right: 1px solid var(--border);

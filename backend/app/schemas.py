@@ -164,6 +164,28 @@ class NamedMarketIn(BaseModel):
     tickers: list[str] = Field(default_factory=list)
 
 
+class MarketIndexOut(BaseModel):
+    close: float | None = None
+    change: float | None = None
+    change_pct: float | None = None
+    closes: list[float] = Field(default_factory=list)
+
+
+class MarketDayOut(BaseModel):
+    date: date
+    up: int
+    down: int
+    flat: int
+    value: int
+
+
+class MarketSummaryOut(BaseModel):
+    sessions: int
+    as_of: date | None = None
+    index: MarketIndexOut
+    days: list[MarketDayOut] = Field(default_factory=list)
+
+
 class NamedMarketOut(BaseModel):
     as_of: date | None = None
     patterns: list[str] = Field(default_factory=list)
