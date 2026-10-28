@@ -2,6 +2,13 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent
 
 export type MultiOption = { id: string; label: string; disabled?: boolean; reason?: string };
 
+const ALL_ID = "__all__";
+
+/** `select` checks every enabled option. `exclusive` is a separate whole-set mode, such as the market. */
+export type MultiSelectAll =
+  | { mode: "select"; label?: string }
+  | { mode: "exclusive"; label?: string; active: boolean; onActiveChange: (active: boolean) => void };
+
 export function MultiSelect({
   label,
   placeholder,
@@ -9,6 +16,7 @@ export function MultiSelect({
   value,
   onChange,
   onQuery,
+  all,
 }: {
   label: string;
   placeholder: string;
@@ -16,6 +24,7 @@ export function MultiSelect({
   value: string[];
   onChange: (ids: string[]) => void;
   onQuery?: (query: string) => void;
+  all?: MultiSelectAll;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -28,7 +37,14 @@ export function MultiSelect({
   const shown = onQuery
     ? options
     : options.filter((item) => item.label.toLowerCase().includes(needle) || item.id.toLowerCase().includes(needle));
-  const activeId = open && shown[active] ? `${listId}-${shown[active].id}` : undefined;
+  const allLabel = all?.label ?? "All";
+  const enabledIds = options.filter((item) => !item.disabled).map((item) => item.id);
+  const selectAllOn = all?.mode === "select" && enabledIds.length > 0 && enabledIds.every((id) => value.includes(id));
+  const exclusiveOn = all?.mode === "exclusive" && all.active;
+  const showAllValue = selectAllOn || exclusiveOn;
+  const allVisible = Boolean(all) && (needle === "" || allLabel.toLowerCase().includes(needle));
+  const menu = allVisible ? [{ id: ALL_ID, label: allLabel, disabled: false }, ...shown] : shown;
+  const activeId = open && menu[active] ? `${listId}-${menu[active].id}` : undefined;
   const labels = new Map(options.map((item) => [item.id, item.label]));
 
   useEffect(() => {
@@ -53,7 +69,7 @@ export function MultiSelect({
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, [open, shown.length]);
+  }, [open, menu.length]);
 
   useEffect(() => {
     if (!open || !activeId) return;
@@ -69,6 +85,32 @@ export function MultiSelect({
     const option = options.find((item) => item.id === id);
     if (option?.disabled && !value.includes(id)) return;
     onChange(value.includes(id) ? value.filter((item) => item !== id) : [...value, id]);
+  }
+
+  function pickAll() {
+    if (!all) return;
+    if (all.mode === "exclusive") {
+      all.onActiveChange(!all.active);
+      return;
+    }
+    onChange(selectAllOn ? value.filter((id) => !enabledIds.includes(id)) : enabledIds);
+  }
+
+  function clearAll() {
+    if (!all) return;
+    if (all.mode === "exclusive") {
+      all.onActiveChange(false);
+      return;
+    }
+    onChange(value.filter((id) => !enabledIds.includes(id)));
+  }
+
+  function choose(id: string) {
+    if (id === ALL_ID) {
+      pickAll();
+      return;
+    }
+    toggle(id);
   }
 
   function openWith(next: string) {
@@ -99,7 +141,7 @@ export function MultiSelect({
         openWith("");
         return;
       }
-      setActive((index) => Math.min(index + 1, Math.max(shown.length - 1, 0)));
+      setActive((index) => Math.min(index + 1, Math.max(menu.length - 1, 0)));
       return;
     }
     if (event.key === "ArrowUp") {
@@ -114,8 +156,8 @@ export function MultiSelect({
         openWith("");
         return;
       }
-      const choice = shown[active];
-      if (choice) toggle(choice.id);
+      const choice = menu[active];
+      if (choice) choose(choice.id);
       return;
     }
     if (event.key === "Escape") {
@@ -179,7 +221,23 @@ export function MultiSelect({
             aria-autocomplete="list"
             onKeyDown={onKeyDown}
           >
-            {value.length === 0 ? (
+            {showAllValue ? (
+              <span className="indicator-chip">
+                <span>{allLabel}</span>
+                <button
+                  type="button"
+                  className="indicator-chip-x"
+                  aria-label={`Remove ${allLabel}`}
+                  onMouseDown={stop}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    clearAll();
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ) : value.length === 0 ? (
               <span className="indicator-placeholder">{placeholder}</span>
             ) : (
               value.map((id) => (
@@ -206,14 +264,14 @@ export function MultiSelect({
       </div>
       {open ? (
         <ul className="indicator-menu" id={listId} role="listbox" aria-label={label} aria-multiselectable="true" ref={menuRef}>
-          {shown.length === 0 ? (
+          {menu.length === 0 ? (
             <li className="indicator-empty" role="presentation">
               {empty}
             </li>
           ) : (
-            shown.map((item, index) => {
-              const checked = value.includes(item.id);
-              const blocked = Boolean(item.disabled) && !checked;
+            menu.map((item, index) => {
+              const checked = item.id === ALL_ID ? showAllValue : value.includes(item.id);
+              const blocked = item.id !== ALL_ID && Boolean(item.disabled) && !checked;
               return (
                 <li
                   key={item.id}
@@ -224,7 +282,7 @@ export function MultiSelect({
                   className={["indicator-option", index === active ? "is-active" : "", blocked ? "is-disabled" : ""].filter(Boolean).join(" ")}
                   onMouseEnter={() => setActive(index)}
                   onMouseDown={stop}
-                  onClick={() => toggle(item.id)}
+                  onClick={() => choose(item.id)}
                 >
                   <span className="indicator-check" aria-hidden="true" />
                   <span className="indicator-option-label">{item.label}</span>

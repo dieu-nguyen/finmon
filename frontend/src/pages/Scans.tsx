@@ -254,7 +254,6 @@ export function Scans() {
   }, [refQ]);
 
   useEffect(() => {
-    if (scope !== "subset") return;
     const q = tickerQuery.trim();
     if (!q) {
       setTickerOptions([]);
@@ -278,7 +277,7 @@ export function Scans() {
       window.clearTimeout(timer);
       ctrl.abort();
     };
-  }, [tickerQuery, scope]);
+  }, [tickerQuery]);
 
   function fill(row: Pattern) {
     setForm({
@@ -380,33 +379,37 @@ export function Scans() {
         <div className="scan-bar">
           <label className="field">
             Patterns
-            <MultiSelect label="Patterns" placeholder="Patterns" options={patternOptions} value={pickedPatterns} onChange={setPickedPatterns} />
+            <MultiSelect
+              label="Patterns"
+              placeholder="Patterns"
+              options={patternOptions}
+              value={pickedPatterns}
+              onChange={setPickedPatterns}
+              all={{ mode: "select" }}
+            />
           </label>
           <label className="field">
             Tickers
-            <Select
-              aria-label="Ticker scope"
-              value={scope}
-              onChange={(event) => setScope(event.target.value === "subset" ? "subset" : "all")}
-              style={{ background: "var(--bg)", minWidth: 140 }}
-            >
-              <option value="all">All tickers</option>
-              <option value="subset">Subset</option>
-            </Select>
+            <MultiSelect
+              label="Tickers"
+              placeholder="Search tickers"
+              options={tickerOptions}
+              value={pickedTickers}
+              onChange={(ids) => {
+                setScope("subset");
+                setPickedTickers(ids);
+              }}
+              onQuery={setTickerQuery}
+              all={{
+                mode: "exclusive",
+                active: scope === "all",
+                onActiveChange: (active) => {
+                  setScope(active ? "all" : "subset");
+                  if (active) setPickedTickers([]);
+                },
+              }}
+            />
           </label>
-          {scope === "subset" ? (
-            <label className="field">
-              Tickers
-              <MultiSelect
-                label="Tickers"
-                placeholder="Search tickers"
-                options={tickerOptions}
-                value={pickedTickers}
-                onChange={setPickedTickers}
-                onQuery={setTickerQuery}
-              />
-            </label>
-          ) : null}
           <Button
             type="button"
             disabled={scanDisabled}

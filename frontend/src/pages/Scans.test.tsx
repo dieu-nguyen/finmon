@@ -179,11 +179,11 @@ describe("Scans named patterns", () => {
     expect(named.getByRole("button", { name: "Scan" })).toBeDisabled();
     fireEvent.click(named.getByRole("combobox", { name: "Patterns" }));
     fireEvent.click(within(named.getByRole("listbox", { name: "Patterns" })).getByRole("option", { name: "Double top" }));
-    fireEvent.change(named.getByRole("combobox", { name: "Ticker scope" }), { target: { value: "subset" } });
+    fireEvent.click(named.getByRole("button", { name: "Remove All" }));
     expect(named.getByRole("button", { name: "Scan" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("combobox", { name: "Tickers" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Tickers" }), { target: { value: "VH" } });
+    fireEvent.click(named.getByRole("combobox", { name: "Tickers" }));
+    fireEvent.change(named.getByRole("combobox", { name: "Tickers" }), { target: { value: "VH" } });
     fireEvent.click(await screen.findByRole("option", { name: /VHM/ }));
     expect(named.getByRole("button", { name: "Scan" })).toBeEnabled();
     fireEvent.click(named.getByRole("button", { name: "Scan" }));
@@ -257,7 +257,9 @@ describe("Scans named patterns", () => {
     const options = () => within(menu()).getAllByRole("option");
     const optionIds = options().map((option) => option.id);
     expect(PATTERN_GUIDE.map((pattern) => pattern.id).sort()).toEqual([...IMPLEMENTED].sort());
-    expect(options()).toHaveLength(IMPLEMENTED.length);
+    expect(options()[0]).toHaveTextContent("All");
+    expect(options()[0]).toHaveAttribute("aria-selected", "false");
+    expect(options()).toHaveLength(IMPLEMENTED.length + 1);
     for (const id of IMPLEMENTED) {
       const option = options().find((row) => row.id.endsWith(`-${id}`));
       expect(optionIds.some((optionId) => optionId.endsWith(`-${id}`))).toBe(true);
@@ -274,11 +276,94 @@ describe("Scans named patterns", () => {
     fireEvent.change(box, { target: { value: "flag" } });
     expect(within(menu()).getAllByRole("option").map((option) => option.textContent)).toEqual(["Bull flag", "Bear flag"]);
     fireEvent.change(box, { target: { value: "   " } });
-    expect(within(menu()).getAllByRole("option")).toHaveLength(IMPLEMENTED.length);
+    expect(within(menu()).getAllByRole("option")).toHaveLength(IMPLEMENTED.length + 1);
 
+    fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(within(menu()).getByRole("option", { name: "Double top" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("selects every pattern from All and keeps ticker All as a market-wide scan", async () => {
+    const posts: { patterns: string[]; scope: string; tickers: string[] }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.endsWith("/api/pattern-catalog")) return json(catalog);
+        if (namedScanPath(url) && method === "POST") {
+          const body = JSON.parse(String(init?.body)) as { patterns: string[]; scope: string; tickers: string[] };
+          posts.push(body);
+          return json({ as_of: "2026-09-28", patterns: body.patterns, scope: body.scope, tickers: body.tickers, hits: [] });
+        }
+        if (namedScanPath(url)) return json({ as_of: null, patterns: [], scope: "all", tickers: [], hits: [] });
+        if (url.endsWith("/api/patterns")) return json([]);
+        if (url.includes("/api/symbols?")) {
+          return json({
+            items: [{ ticker: "VHM", name: "Vinhomes", board: "HOSE", type: "stock", listed: true, last: 1, change: 0, volume: 1, watchlist: false }],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          });
+        }
+        return json({ items: [] });
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <Scans />
+      </MemoryRouter>,
+    );
+
+    const named = within(await screen.findByRole("region", { name: "Named patterns" }));
+    expect(await screen.findByText("No named pattern scan yet")).toBeInTheDocument();
+    const tickers = named.getByRole("combobox", { name: "Tickers" });
+    expect(tickers).toHaveTextContent("All");
+    expect(named.getByRole("button", { name: "Scan" })).toBeDisabled();
+
+    fireEvent.click(named.getByRole("combobox", { name: "Patterns" }));
+    const patternMenu = () => named.getByRole("listbox", { name: "Patterns" });
+    expect(within(patternMenu()).getAllByRole("option")[0]).toHaveTextContent("All");
+    fireEvent.click(within(patternMenu()).getByRole("option", { name: "All" }));
+    expect(within(patternMenu()).getByRole("option", { name: "All" })).toHaveAttribute("aria-selected", "true");
+    expect(within(patternMenu()).getByRole("option", { name: "Cup and handle" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(named.getByRole("combobox", { name: "Patterns" }), { key: "Escape" });
+    const closed = named.getByRole("combobox", { name: "Patterns" });
+    expect(closed).toHaveTextContent("All");
+    expect(closed).not.toHaveTextContent("Cup and handle");
+    expect(posts).toHaveLength(0);
+    expect(named.getByRole("button", { name: "Scan" })).toBeEnabled();
+
+    fireEvent.click(closed);
+    fireEvent.click(within(patternMenu()).getByRole("option", { name: "Cup and handle" }));
+    expect(within(patternMenu()).getByRole("option", { name: "All" })).toHaveAttribute("aria-selected", "false");
+    expect(within(patternMenu()).getByRole("option", { name: "Double bottom" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(named.getByRole("combobox", { name: "Patterns" }), { key: "Escape" });
+    const after = named.getByRole("combobox", { name: "Patterns" });
+    expect(within(after).queryByText("All")).not.toBeInTheDocument();
+    expect(within(after).getByText("Double bottom")).toBeInTheDocument();
+    expect(within(after).queryByText("Cup and handle")).not.toBeInTheDocument();
+
+    fireEvent.click(named.getByRole("button", { name: "Scan" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]?.scope).toBe("all");
+    expect(posts[0]?.tickers).toEqual([]);
+    expect(posts[0]?.patterns).toEqual(PATTERN_GUIDE.map((row) => row.id).filter((id) => id !== "cup_and_handle"));
+
+    fireEvent.click(named.getByRole("combobox", { name: "Tickers" }));
+    fireEvent.change(named.getByRole("combobox", { name: "Tickers" }), { target: { value: "VH" } });
+    fireEvent.click(await screen.findByRole("option", { name: /VHM/ }));
+    fireEvent.keyDown(named.getByRole("combobox", { name: "Tickers" }), { key: "Escape" });
+    const tickerBox = named.getByRole("combobox", { name: "Tickers" });
+    expect(within(tickerBox).queryByText("All")).not.toBeInTheDocument();
+    expect(tickerBox).toHaveTextContent("VHM");
+    fireEvent.click(named.getByRole("button", { name: "Scan" }));
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1]?.scope).toBe("subset");
+    expect(posts[1]?.tickers).toEqual(["VHM"]);
+    expect(posts[1]?.patterns).toEqual(posts[0]?.patterns);
   });
 
   it("keeps summary counts when the match filter changes", async () => {
