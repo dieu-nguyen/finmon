@@ -9,6 +9,7 @@ export type PatternSwings = {
 };
 
 export type PatternMark = {
+  pattern?: string;
   points: PatternPoint[];
   neckline: { date: string; price: number }[];
 };
@@ -27,6 +28,7 @@ export function stateLabel(state: string | null | undefined): string {
 export function markFrom(swings: PatternSwings | null | undefined): PatternMark | null {
   if (!swings || !Array.isArray(swings.points) || swings.points.length === 0) return null;
   return {
+    pattern: swings.pattern,
     points: swings.points,
     neckline: Array.isArray(swings.neckline) ? swings.neckline : [],
   };
