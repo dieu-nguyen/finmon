@@ -71,6 +71,8 @@ export type DailyOption = {
     fillerColor?: string;
     textStyle?: unknown;
     moveOnMouseMove?: boolean;
+    startValue?: string;
+    endValue?: string;
   }[];
   series: DailySeries[];
 };
@@ -125,6 +127,147 @@ function categoryAxis(dates: string[], gridIndex: number, colors: ChartColors, s
   };
 }
 
+const CHANNEL_PATTERNS = new Set(["ascending_channel", "descending_channel"]);
+const CHANNEL_FORWARD_SESSIONS = 10;
+/** Empty categories kept in view to the right of the last real bar. */
+export const FUTURE_RIGHT_OFFSET = 20;
+/** Empty categories the axis keeps so the user can scroll past that default offset. */
+export const FUTURE_SCROLL_BARS = 60;
+const DAY_MS = 86400000;
+
+function utcDay(iso: string): number {
+  return Date.parse(`${iso}T00:00:00Z`);
+}
+
+function isoFromUtc(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function medianGapDays(dates: string[]): number {
+  const gaps: number[] = [];
+  for (let i = 1; i < dates.length; i += 1) {
+    const gap = Math.round((utcDay(dates[i]) - utcDay(dates[i - 1])) / DAY_MS);
+    if (gap > 0) gaps.push(gap);
+  }
+  if (gaps.length === 0) return 1;
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor((gaps.length - 1) / 2)];
+}
+
+/** Next `count` bar slots after the last plotted date. Daily charts skip weekends. */
+function appendSessions(dates: string[], count: number): string[] {
+  if (dates.length === 0 || count <= 0) return dates.slice();
+  const step = medianGapDays(dates);
+  const daily = step <= 3;
+  const out = dates.slice();
+  let cursor = out[out.length - 1];
+  let added = 0;
+  let guard = 0;
+  while (added < count && guard < count * 8) {
+    guard += 1;
+    cursor = isoFromUtc(utcDay(cursor) + (daily ? 1 : step) * DAY_MS);
+    if (daily) {
+      const weekday = new Date(`${cursor}T00:00:00Z`).getUTCDay();
+      if (weekday === 0 || weekday === 6) continue;
+    }
+    out.push(cursor);
+    added += 1;
+  }
+  return out;
+}
+
+/**
+ * Both channel rails, continued at their own slope to the last bar and
+ * `CHANNEL_FORWARD_SESSIONS` slots past it. `axis` already includes the empty
+ * future categories, so the rail ends inside that space. Returns null unless
+ * the pattern is a channel and at least one stored rail lands on the axis.
+ */
+function projectChannel(
+  pattern: string | undefined,
+  dates: string[],
+  neck: Point[],
+  axis: string[],
+): { segments: [Point, Point][] } | null {
+  if (!pattern || !CHANNEL_PATTERNS.has(pattern) || dates.length === 0 || neck.length < 2 || axis.length === 0) return null;
+  const index = new Map(axis.map((date, i) => [date, i]));
+  const endIndex = Math.min(axis.length - 1, dates.length - 1 + CHANNEL_FORWARD_SESSIONS);
+  const endDate = axis[endIndex];
+  const segments: [Point, Point][] = [];
+  let extended = false;
+  for (let i = 0; i + 1 < neck.length; i += 2) {
+    const from = neck[i];
+    const to = neck[i + 1];
+    const i0 = index.get(from.date);
+    const i1 = index.get(to.date);
+    if (i0 == null || i1 == null || i0 === i1 || !Number.isFinite(from.price) || !Number.isFinite(to.price)) {
+      segments.push([from, to]);
+      continue;
+    }
+    const price = from.price + ((to.price - from.price) / (i1 - i0)) * (endIndex - i0);
+    segments.push([from, { date: endDate, price }]);
+    extended = true;
+  }
+  return extended ? { segments } : null;
+}
+
+/** Real bar dates plus empty future slots of the same aggregation. The window ends `FUTURE_RIGHT_OFFSET` slots after the last bar. */
+function futureAxis(dates: string[]): { axis: string[]; endValue?: string } {
+  if (dates.length === 0) return { axis: [] };
+  const axis = appendSessions(dates, FUTURE_SCROLL_BARS);
+  const endIndex = Math.min(axis.length - 1, dates.length - 1 + FUTURE_RIGHT_OFFSET);
+  return { axis, endValue: axis[endIndex] };
+}
+
+/** Keep a drawing or mark date that falls after the last bar even when it is not one of the generated slots. */
+function mergeFutureAnchors(axis: string[], realCount: number, extraDates: string[]): string[] {
+  if (realCount <= 0 || extraDates.length === 0) return axis;
+  const known = new Set(axis);
+  const last = axis[realCount - 1];
+  const extras = [...new Set(extraDates.filter((date) => date > last && !known.has(date)))].sort();
+  if (extras.length === 0) return axis;
+  const tail = [...axis.slice(realCount), ...extras].sort();
+  return [...axis.slice(0, realCount), ...tail];
+}
+
+function futureAnchorDates(drawings: Drawing[], patternMark?: PatternMark | null): string[] {
+  const dates: string[] = [];
+  for (const drawing of drawings) {
+    for (const point of drawing.points ?? []) {
+      if (point?.date) dates.push(point.date);
+    }
+  }
+  for (const point of patternMark?.points ?? []) {
+    if (point?.date) dates.push(point.date);
+  }
+  for (const point of patternMark?.neckline ?? []) {
+    if (point?.date) dates.push(point.date);
+  }
+  return dates;
+}
+
+function finiteNumbers(value: unknown, into: number[]) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    into.push(value);
+    return;
+  }
+  if (!Array.isArray(value)) return;
+  for (const item of value) finiteNumbers(item, into);
+}
+
+function coverPriceScale(axis: DailyAxis, dataPrices: number[], railPrices: number[]) {
+  const rails = railPrices.filter((price) => Number.isFinite(price));
+  const data = dataPrices.filter((price) => Number.isFinite(price));
+  if (rails.length === 0 || data.length === 0) return;
+  const dataLow = Math.min(...data);
+  const dataHigh = Math.max(...data);
+  const low = Math.min(dataLow, ...rails);
+  const high = Math.max(dataHigh, ...rails);
+  if (low >= dataLow && high <= dataHigh) return;
+  const pad = (high - low) * 0.04 || 1;
+  axis.min = low - pad;
+  axis.max = high + pad;
+}
+
 function priceSegment(from: Point, to: Point, color: string, label?: string, lineType?: string): [MarkEndpoint, MarkEndpoint] {
   return [
     {
@@ -148,7 +291,7 @@ export function buildDailyOption(input: {
   floor?: number | null;
   colors: ChartColors;
   tool?: DrawingTool;
-}): { option: DailyOption; readouts: IndicatorReadout[]; readoutAt: (index: number | null) => IndicatorReadout[] } {
+}): { option: DailyOption; readouts: IndicatorReadout[]; readoutAt: (index: number | null) => IndicatorReadout[]; axisDates: string[] } {
   const { bars, drawings, colors } = input;
   const dates = bars.map((bar) => bar.date);
   const plots: IndicatorPlot[] = [];
@@ -214,8 +357,18 @@ export function buildDailyOption(input: {
     }
   }
   const neck = input.patternMark?.neckline ?? [];
-  for (let i = 0; i + 1 < neck.length; i += 2) {
-    markLineData.push(priceSegment(neck[i], neck[i + 1], colors.warn, undefined, "dashed"));
+  const { axis: generatedAxis, endValue } = futureAxis(dates);
+  const channel = projectChannel(input.patternMark?.pattern, dates, neck, generatedAxis);
+  const railSegments = channel?.segments ?? [];
+  const plotDates = mergeFutureAnchors(generatedAxis, dates.length, futureAnchorDates(drawings, input.patternMark));
+  if (channel) {
+    for (const [from, to] of railSegments) {
+      markLineData.push(priceSegment(from, to, colors.warn, undefined, "dashed"));
+    }
+  } else {
+    for (let i = 0; i + 1 < neck.length; i += 2) {
+      markLineData.push(priceSegment(neck[i], neck[i + 1], colors.warn, undefined, "dashed"));
+    }
   }
   for (const point of input.patternMark?.points ?? []) {
     markPoint.push({
@@ -234,6 +387,18 @@ export function buildDailyOption(input: {
     splitLine: { lineStyle: { color: colors.border } },
     axisLine: { lineStyle: { color: colors.border } },
   };
+  if (channel) {
+    const dataPrices: number[] = [];
+    for (const bar of bars) {
+      dataPrices.push(bar.low, bar.high);
+    }
+    for (const plot of plots) {
+      if (plot.pane !== "price") continue;
+      for (const series of plot.series) finiteNumbers(series.data, dataPrices);
+    }
+    const railPrices = railSegments.flatMap(([from, to]) => [from.price, to.price]);
+    coverPriceScale(priceAxis, dataPrices, railPrices);
+  }
   const volumeAxis: DailyAxis = {
     scale: true,
     gridIndex: volumeIndex,
@@ -253,12 +418,13 @@ export function buildDailyOption(input: {
   yAxis.push(volumeAxis);
 
   const xAxis = [
-    categoryAxis(dates, 0, colors, separates.length === 0),
-    ...separates.map((_, index) => categoryAxis(dates, index + 1, colors, false)),
-    categoryAxis(dates, volumeIndex, colors, separates.length > 0),
+    categoryAxis(plotDates, 0, colors, separates.length === 0),
+    ...separates.map((_, index) => categoryAxis(plotDates, index + 1, colors, false)),
+    categoryAxis(plotDates, volumeIndex, colors, separates.length > 0),
   ];
   const grid = layoutPanes(separates.length);
   const xIndexes = xAxis.map((_, index) => index);
+  const zoomWindow = endValue ? { startValue: dates[0], endValue } : {};
   const priceLines = plots.filter((plot) => plot.pane === "price").flatMap((plot) => place(plot.series, 0, 0));
   const volumeLines = plots.filter((plot) => plot.pane === "volume").flatMap((plot) => place(plot.series, volumeIndex, volumeIndex));
   const separateLines = separates.flatMap((plot, index) => place(plot.series, index + 1, index + 1));
@@ -283,7 +449,7 @@ export function buildDailyOption(input: {
     xAxis,
     yAxis,
     dataZoom: [
-      { type: "inside", xAxisIndex: xIndexes, moveOnMouseMove: (input.tool ?? "pan") === "pan" },
+      { type: "inside", xAxisIndex: xIndexes, moveOnMouseMove: (input.tool ?? "pan") === "pan", ...zoomWindow },
       {
         type: "slider",
         xAxisIndex: xIndexes,
@@ -292,6 +458,7 @@ export function buildDailyOption(input: {
         borderColor: colors.border,
         fillerColor: "rgba(110,168,254,0.15)",
         textStyle: { color: colors.faint },
+        ...zoomWindow,
       },
     ],
     series: [
@@ -326,5 +493,5 @@ export function buildDailyOption(input: {
     ],
   };
 
-  return { option, readouts, readoutAt };
+  return { option, readouts, readoutAt, axisDates: plotDates };
 }

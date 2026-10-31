@@ -19,16 +19,19 @@ export function applyDrawing(drawings: Drawing[], tool: DrawingTool, point: Poin
   return [...drawings, { tool, points: [point] }];
 }
 
-/** Nearest bar for an ECharts convertFromPixel result: [category index or date, price]. */
-export function pointFromPixel(bars: { date: string }[], raw: unknown): Point | null {
+/**
+ * Nearest category for an ECharts convertFromPixel result: [category index or date, price].
+ * `dates` is the chart axis, including empty future slots, so a click past the last bar keeps that date.
+ */
+export function pointFromPixel(dates: { date: string }[], raw: unknown): Point | null {
   if (!Array.isArray(raw) || raw.length < 2) return null;
   const [x, y] = raw as [unknown, unknown];
   if (typeof y !== "number" || !Number.isFinite(y)) return null;
   let index = -1;
   if (typeof x === "number" && Number.isFinite(x)) index = Math.round(x);
-  else if (typeof x === "string") index = bars.findIndex((bar) => bar.date === x);
-  if (index < 0 || index >= bars.length) return null;
-  return { date: bars[index].date, price: Math.round(y) };
+  else if (typeof x === "string") index = dates.findIndex((item) => item.date === x);
+  if (index < 0 || index >= dates.length) return null;
+  return { date: dates[index].date, price: Math.round(y) };
 }
 
 /** Category index from convertFromPixel, or null when the pointer misses the bars. */
@@ -44,12 +47,12 @@ export function barIndexFromPixel(barCount: number, raw: unknown): number | null
 export function drawingsAfterClick(
   drawings: Drawing[],
   tool: DrawingTool,
-  bars: { date: string }[],
+  dates: { date: string }[],
   raw: unknown,
 ): Drawing[] | null {
   if (tool === "pan") return null;
   if (tool === "delete") return applyDrawing(drawings, tool, { date: "", price: 0 });
-  const point = pointFromPixel(bars, raw);
+  const point = pointFromPixel(dates, raw);
   if (!point) return null;
   return applyDrawing(drawings, tool, point);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Bar } from "../api";
-import { buildDailyOption } from "./dailyOption";
+import { buildDailyOption, FUTURE_SCROLL_BARS } from "./dailyOption";
 import type { PatternMark } from "./patternMarks";
 import { filterIndicators, INDICATORS, indicatorQuery, toggleIndicator } from "./indicators";
 
@@ -263,6 +263,117 @@ describe("indicator drawing", () => {
     const bare = seriesOf(cleared).find((item) => item.type === "candlestick");
     expect(bare?.markPoint?.data).toEqual([]);
     expect(bare?.markLine?.data).toEqual([expect.objectContaining({ yAxis: 11 })]);
+  });
+
+  it("extends both channel rails past the last bar and keeps the upper rail on the price scale", () => {
+    const channelBars: Bar[] = [
+      { date: "2026-10-05", open: 10, high: 11, low: 8, close: 10, volume: 1 },
+      { date: "2026-10-06", open: 10, high: 12, low: 9, close: 11, volume: 1 },
+      { date: "2026-10-07", open: 11, high: 12, low: 9, close: 11, volume: 1 },
+    ];
+    const patternMark: PatternMark = {
+      pattern: "ascending_channel",
+      points: [
+        { date: "2026-10-05", price: 10, role: "high" },
+        { date: "2026-10-06", price: 12, role: "high" },
+        { date: "2026-10-05", price: 8, role: "low" },
+        { date: "2026-10-07", price: 9, role: "low" },
+      ],
+      neckline: [
+        { date: "2026-10-05", price: 10 },
+        { date: "2026-10-06", price: 12 },
+        { date: "2026-10-05", price: 8 },
+        { date: "2026-10-07", price: 9 },
+      ],
+    };
+    const view = buildDailyOption({
+      bars: channelBars,
+      drawings: [],
+      patternMark,
+      indicatorIds: [],
+      indicatorData: null,
+      colors,
+    });
+    const candle = seriesOf(view).find((item) => item.type === "candlestick");
+    const dates = (view.option.xAxis[0] as { data: string[] }).data;
+    expect(dates).toHaveLength(channelBars.length + FUTURE_SCROLL_BARS);
+    expect(dates).toContain("2026-10-21");
+    const visibleEnd = view.option.dataZoom[0].endValue;
+    expect(dates.indexOf("2026-10-21")).toBeLessThanOrEqual(dates.indexOf(String(visibleEnd)));
+    expect(candle?.markPoint?.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ coord: ["2026-10-05", 10], value: "high" }),
+        expect.objectContaining({ coord: ["2026-10-06", 12], value: "high" }),
+        expect.objectContaining({ coord: ["2026-10-05", 8], value: "low" }),
+        expect.objectContaining({ coord: ["2026-10-07", 9], value: "low" }),
+      ]),
+    );
+    expect(candle?.markLine?.data).toEqual(
+      expect.arrayContaining([
+        [
+          expect.objectContaining({ coord: ["2026-10-05", 10], lineStyle: expect.objectContaining({ type: "dashed" }) }),
+          expect.objectContaining({ coord: ["2026-10-21", 34] }),
+        ],
+        [
+          expect.objectContaining({ coord: ["2026-10-05", 8] }),
+          expect.objectContaining({ coord: ["2026-10-21", 14] }),
+        ],
+      ]),
+    );
+    expect(view.option.yAxis[0]?.max).toBeGreaterThan(34);
+    expect(view.option.yAxis[0]?.min).toBeLessThan(8);
+
+    const descending = buildDailyOption({
+      bars: channelBars,
+      drawings: [],
+      patternMark: { ...patternMark, pattern: "descending_channel" },
+      indicatorIds: [],
+      indicatorData: null,
+      colors,
+    });
+    const descendingDates = (descending.option.xAxis[0] as { data: string[] }).data;
+    expect(descendingDates).toContain("2026-10-21");
+    expect(descendingDates.at(-1)).not.toBe("2026-10-21");
+    const descendingCandle = seriesOf(descending).find((item) => item.type === "candlestick");
+    expect(descendingCandle?.markLine?.data).toEqual(
+      expect.arrayContaining([
+        [
+          expect.objectContaining({ coord: ["2026-10-05", 10] }),
+          expect.objectContaining({ coord: ["2026-10-21", 34] }),
+        ],
+        [
+          expect.objectContaining({ coord: ["2026-10-05", 8] }),
+          expect.objectContaining({ coord: ["2026-10-21", 14] }),
+        ],
+      ]),
+    );
+
+    const flag = buildDailyOption({
+      bars: channelBars,
+      drawings: [],
+      patternMark: { ...patternMark, pattern: "bull_flag" },
+      indicatorIds: [],
+      indicatorData: null,
+      colors,
+    });
+    const flagDates = (flag.option.xAxis[0] as { data: string[] }).data;
+    expect(flagDates.slice(0, channelBars.length)).toEqual(channelBars.map((bar) => bar.date));
+    expect(flagDates).toHaveLength(channelBars.length + FUTURE_SCROLL_BARS);
+    expect(flag.option.yAxis[0]?.min).toBeUndefined();
+    expect(flag.option.yAxis[0]?.max).toBeUndefined();
+    const flagCandle = seriesOf(flag).find((item) => item.type === "candlestick");
+    expect(flagCandle?.markLine?.data).toEqual(
+      expect.arrayContaining([
+        [
+          expect.objectContaining({ coord: ["2026-10-05", 10] }),
+          expect.objectContaining({ coord: ["2026-10-06", 12] }),
+        ],
+        [
+          expect.objectContaining({ coord: ["2026-10-05", 8] }),
+          expect.objectContaining({ coord: ["2026-10-07", 9] }),
+        ],
+      ]),
+    );
   });
 
   it("draws candles and volume only when nothing is selected", () => {

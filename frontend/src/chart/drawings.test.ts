@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Bar } from "../api";
-import { buildDailyOption } from "./dailyOption";
+import { buildDailyOption, FUTURE_RIGHT_OFFSET, FUTURE_SCROLL_BARS } from "./dailyOption";
 import { barIndexFromPixel, drawingsAfterClick, FIB_LEVELS, type Drawing } from "./drawings";
 
 const colors = {
@@ -159,6 +159,102 @@ describe("chart drawings", () => {
     expect(built.readoutAt(null)).toEqual([{ label: "SMA (20)", value: "14" }]);
   });
 
+  it("leaves empty future bars after the last candle and keeps a drawing endpoint there", () => {
+    const plain = view([]);
+    const dates = plain.axisDates;
+    expect(dates.slice(0, bars.length)).toEqual(bars.map((bar) => bar.date));
+    expect(dates).toHaveLength(bars.length + FUTURE_SCROLL_BARS);
+    expect(dates[bars.length]).toBe("2026-01-07");
+    const windowEnd = dates[bars.length - 1 + FUTURE_RIGHT_OFFSET];
+    expect(plain.option.dataZoom[0]).toMatchObject({ startValue: bars[0].date, endValue: windowEnd });
+    expect(plain.option.dataZoom[1]).toMatchObject({ startValue: bars[0].date, endValue: windowEnd });
+    expect(dates.indexOf(windowEnd)).toBeLessThan(dates.length - 1);
+
+    const candle = plain.option.series.find((item) => item.type === "candlestick");
+    const volume = plain.option.series.find((item) => item.type === "bar");
+    expect(candle?.data).toHaveLength(bars.length);
+    expect(volume?.data).toHaveLength(bars.length);
+    expect(JSON.stringify(candle?.data)).not.toContain(dates[bars.length]);
+    expect(JSON.stringify(volume?.data)).not.toContain(dates[bars.length]);
+
+    const future = dates[bars.length + 12];
+    const beyond = "2026-08-03";
+    const drawings: Drawing[] = [
+      { tool: "trend", points: [{ date: "2026-01-02", price: 10 }, { date: future, price: 18 }] },
+      { tool: "horizontal", points: [{ date: future, price: 16 }] },
+      { tool: "rectangle", points: [{ date: "2026-01-05", price: 11 }, { date: future, price: 19 }] },
+      { tool: "fib", points: [{ date: "2026-01-02", price: 10 }, { date: future, price: 20 }] },
+      { tool: "pin", points: [{ date: future, price: 17 }] },
+      { tool: "text", points: [{ date: beyond, price: 21 }] },
+    ];
+    const anchored = view(drawings);
+    expect(anchored.axisDates).toContain(future);
+    expect(anchored.axisDates).toContain(beyond);
+    expect(anchored.axisDates.length).toBeGreaterThan(bars.length + FUTURE_SCROLL_BARS);
+    expect(anchored.option.dataZoom[0].endValue).toBe(windowEnd);
+    const series = anchored.option.series.find((item) => item.type === "candlestick");
+    expect(series?.data).toHaveLength(bars.length);
+    const encoded = JSON.stringify(series);
+    expect(encoded).toContain(future);
+    expect(encoded).toContain(beyond);
+    expect(series?.markArea?.data).toEqual([
+      [
+        expect.objectContaining({ xAxis: "2026-01-05", yAxis: 11 }),
+        expect.objectContaining({ xAxis: future, yAxis: 19 }),
+      ],
+    ]);
+    expect(series?.markPoint?.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ coord: [future, 17], value: "pin" }),
+        expect.objectContaining({ coord: [beyond, 21], value: "note" }),
+      ]),
+    );
+
+    const withIndicator = view(drawings, ["rsi"], { "rsi:14": [30, 40, 50] });
+    const still = withIndicator.option.series.find((item) => item.type === "candlestick");
+    expect(JSON.stringify(still?.markLine ?? {})).toContain(future);
+    expect(JSON.stringify(withIndicator.option.series.find((item) => item.name === "RSI (14)") ?? {})).not.toContain(future);
+
+    const weekBars: Bar[] = [
+      { date: "2026-01-02", open: 10, high: 12, low: 9, close: 11, volume: 100 },
+      { date: "2026-01-09", open: 11, high: 14, low: 10, close: 13, volume: 80 },
+      { date: "2026-01-16", open: 13, high: 15, low: 12, close: 14, volume: 90 },
+    ];
+    const weekly = buildDailyOption({
+      bars: weekBars,
+      drawings,
+      indicatorIds: [],
+      indicatorData: null,
+      refPrice: null,
+      ceiling: null,
+      floor: null,
+      colors,
+    });
+    expect(weekly.axisDates[weekBars.length]).toBe("2026-01-23");
+    expect(weekly.axisDates).toContain(future);
+    expect(weekly.option.series.find((item) => item.type === "candlestick")?.data).toHaveLength(weekBars.length);
+    expect(weekly.option.dataZoom[0].endValue).toBe(weekly.axisDates[weekBars.length - 1 + FUTURE_RIGHT_OFFSET]);
+
+    const monthBars: Bar[] = [
+      { date: "2026-01-31", open: 10, high: 12, low: 9, close: 11, volume: 100 },
+      { date: "2026-02-28", open: 11, high: 14, low: 10, close: 13, volume: 80 },
+      { date: "2026-03-31", open: 13, high: 15, low: 12, close: 14, volume: 90 },
+    ];
+    const monthly = buildDailyOption({
+      bars: monthBars,
+      drawings: [],
+      indicatorIds: [],
+      indicatorData: null,
+      refPrice: null,
+      ceiling: null,
+      floor: null,
+      colors,
+    });
+    expect(monthly.axisDates).toHaveLength(monthBars.length + FUTURE_SCROLL_BARS);
+    expect(monthly.axisDates[monthBars.length]).toBe("2026-04-28");
+    expect(monthly.option.series.find((item) => item.type === "candlestick")?.data).toHaveLength(monthBars.length);
+  });
+
   it("stops the chart from dragging while a drawing tool is selected", () => {
     const option = buildDailyOption({
       bars,
@@ -204,6 +300,24 @@ describe("drawing clicks", () => {
     expect(barIndexFromPixel(3, 0.4)).toBe(0);
     expect(barIndexFromPixel(3, [-2, 10])).toBeNull();
     expect(barIndexFromPixel(3, [9, 10])).toBeNull();
+  });
+
+  it("places a trend endpoint on an empty future category", () => {
+    const axis = [...clickBars, { date: "2026-01-06" }, { date: "2026-01-07" }];
+    const first = drawingsAfterClick([], "trend", axis, [1, 10]);
+    const done = drawingsAfterClick(first ?? [], "trend", axis, [3, 14.2]);
+    expect(done).toEqual([
+      {
+        tool: "trend",
+        points: [
+          { date: "2026-01-05", price: 10 },
+          { date: "2026-01-07", price: 14 },
+        ],
+      },
+    ]);
+    expect(drawingsAfterClick([], "pin", axis, ["2026-01-07", 12.4])).toEqual([
+      { tool: "pin", points: [{ date: "2026-01-07", price: 12 }] },
+    ]);
   });
 
   it("ignores pan and clicks that miss the bars", () => {
