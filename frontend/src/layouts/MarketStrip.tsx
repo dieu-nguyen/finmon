@@ -115,7 +115,7 @@ export function MarketStrip() {
   const versus = valueMissing ? null : versusAverage(values);
 
   return (
-    <div className="market-strip">
+    <div className="market-strip" data-testid="market-strip">
       {failed ? (
         <p className="strip-quiet">Summary unavailable</p>
       ) : (

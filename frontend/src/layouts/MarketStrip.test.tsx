@@ -69,6 +69,18 @@ describe("market strip", () => {
     expect(document.body.textContent).not.toMatch(/foreign|coming soon/i);
     expect(screen.getByTestId("strip-index-line")).toBeInTheDocument();
     expect(screen.getByTestId("strip-value-bars")).toBeInTheDocument();
+    const strip = screen.getByTestId("market-strip");
+    const app = document.querySelector(".app");
+    const main = document.querySelector("main");
+    expect(app?.children[0]).toHaveClass("app-header");
+    expect(app?.children[1]).toBe(strip);
+    expect(app?.children[2]).toHaveClass("app-body");
+    expect(main?.contains(strip)).toBe(false);
+    expect(screen.getAllByTestId("market-strip")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("link", { name: "Market" }));
+    expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("market-strip")).toHaveLength(1);
+    expect(document.querySelector("main")?.contains(screen.getByTestId("market-strip"))).toBe(false);
   });
 
   it("says turnover was not stored when every session value is zero", async () => {

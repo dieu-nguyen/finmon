@@ -9,7 +9,7 @@ The operator moves between the market list, a symbol, scans, and patterns. The i
 
 ## Decision
 
-A strip is pinned at the top of every page, inside the app shell, above the page content.
+The strip is shell chrome, pinned above every page. It sits directly under the top bar and above the page outlet, edge to edge across the app frame, and stays put while the page below scrolls.
 
 Three cells, and a fourth cell of the same width that stays empty. The empty cell is reserved space. It has no label and no placeholder. Foreign net, and any other fourth metric, are omitted on purpose.
 

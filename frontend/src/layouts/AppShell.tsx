@@ -33,6 +33,7 @@ export function AppShell() {
           </span>
         </div>
       </header>
+      <MarketStrip />
       <div className="app-body">
         <nav className="nav">
           <div className="nav-kicker">Terminal</div>
@@ -47,12 +48,9 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="shell-column">
-          <MarketStrip />
-          <main className="shell-main">
-            <Outlet />
-          </main>
-        </div>
+        <main className="shell-main">
+          <Outlet />
+        </main>
       </div>
     </div>
   );

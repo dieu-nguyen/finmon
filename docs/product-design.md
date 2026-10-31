@@ -40,7 +40,7 @@ Out of scope for this product:
 
 UX is the first principle for every screen: performance and convenience. First paint is a small set. Search and filters narrow the request. Stocks, fund certificates, and indices stay in separate lists.
 
-A strip stays pinned above every page. It shows VN-Index, HOSE breadth, and HOSE trading value for 7 or 30 trading sessions taken from VNINDEX. The fourth cell is empty. Detail: `docs/adr/0013-market-strip.md`.
+A strip is shell chrome, pinned above every page. It shows VN-Index, HOSE breadth, and HOSE trading value for 7 or 30 trading sessions taken from VNINDEX. The fourth cell is empty. Detail: `docs/adr/0013-market-strip.md`.
 
 ### 2.1 Market
 
