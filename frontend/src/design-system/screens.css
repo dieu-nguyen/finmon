@@ -68,7 +68,7 @@ h1, h2, h3 { margin: 0; }
   z-index: 2;
 }
 .strip-cell {
-  min-height: 84px;
+  min-height: 108px;
   min-width: 0;
   padding: var(--space-2) var(--space-4);
   background: transparent;
@@ -115,7 +115,12 @@ a.strip-cell:hover { background: var(--bg-hover); }
   color: var(--text-muted);
   font-size: var(--fs-sm);
 }
-.strip-series { display: block; margin-top: auto; }
+.strip-series {
+  display: block;
+  width: 100%;
+  margin-top: auto;
+  overflow: visible;
+}
 .strip-quiet {
   grid-column: 1 / 4;
   margin: 0;
@@ -125,9 +130,7 @@ a.strip-cell:hover { background: var(--bg-hover); }
 }
 .strip-side {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: var(--space-2);
+  align-items: flex-start;
   padding: var(--space-2) var(--space-4);
 }
 .strip-asof {

@@ -13,7 +13,7 @@ The strip is shell chrome, pinned above every page. It sits directly under the t
 
 Three cells, and a fourth cell of the same width that stays empty. The empty cell is reserved space. It has no label and no placeholder. Foreign net, and any other fourth metric, are omitted on purpose.
 
-One control switches every cell between 7 and 30 trading sessions. The default is 7. The sessions are the latest `VNINDEX` dates on official bars (`daily_bar.source = dnse`), not calendar days. The strip shows that latest session date.
+Every cell shows the same 30 trading sessions. There is no switch. The sessions are the latest `VNINDEX` dates on official bars (`daily_bar.source = dnse`), not calendar days. The strip shows that latest session date.
 
 VN-Index reads `daily_bar` for `ticker = VNINDEX`. `to_dong(..., is_index=True)` stores hundredths of a point, so the cell shows points (`close / 100`). The change is from the first close in the window to the latest close. The cell links to the existing symbol page.
 
@@ -25,4 +25,4 @@ The strip loads with the shell and does not block the page. A failed read leaves
 
 ## Consequences
 
-`GET /api/market/summary?sessions=7|30` is the only read. Any other `sessions` value is rejected. The query is the VNINDEX date list (limit N+1 on `uq_daily_bar_ticker_date`), then one aggregate of HOSE stock and ETF bars on those dates. Each bar lookup is an equality on `(ticker, date)`.
+`GET /api/market/summary` is the only read. It always returns 30 sessions. A `sessions` query string is ignored. The query is the VNINDEX date list (limit 31 on `uq_daily_bar_ticker_date`), then one aggregate of HOSE stock and ETF bars on those dates. Each bar lookup is an equality on `(ticker, date)`.

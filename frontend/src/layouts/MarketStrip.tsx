@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type MarketSummary } from "../api";
-import { Segmented } from "../design-system";
 
 const TY = 1_000_000_000;
 
@@ -34,43 +33,49 @@ function versusAverage(values: number[]): { text: string; tone: "up" | "down" | 
   return pct > 0 ? { text: `${formatted}% above average`, tone: "up" } : { text: `${formatted}% below average`, tone: "down" };
 }
 
+const SERIES_H = 36;
+
+function seriesWidth(count: number): number {
+  return Math.max(160, count * 8);
+}
+
 function Line({ values }: { values: number[] }) {
   if (values.length < 2) return null;
-  const width = 140;
-  const height = 28;
+  const width = seriesWidth(values.length);
+  const height = SERIES_H;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
   const points = values
     .map((value, index) => {
-      const x = (index / (values.length - 1)) * (width - 2) + 1;
-      const y = height - 2 - ((value - min) / span) * (height - 4);
+      const x = (index / (values.length - 1)) * (width - 4) + 2;
+      const y = height - 3 - ((value - min) / span) * (height - 6);
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
   return (
-    <svg className="strip-series" data-testid="strip-index-line" viewBox={`0 0 ${width} ${height}`} width="100%" height={height} aria-hidden="true">
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" />
+    <svg className="strip-series" data-testid="strip-index-line" viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
 
 function Bars({ values, signed, testId }: { values: number[]; signed: boolean; testId: string }) {
   if (values.length === 0) return null;
-  const width = 140;
-  const height = 28;
+  const width = seriesWidth(values.length);
+  const height = SERIES_H;
   const max = Math.max(...values.map((value) => Math.abs(value)), 1);
-  const gap = 1;
+  const gap = values.length > 16 ? 1.25 : 2;
   const barWidth = (width - gap * (values.length - 1)) / values.length;
   const mid = height / 2;
   return (
-    <svg className="strip-series" data-testid={testId} viewBox={`0 0 ${width} ${height}`} width="100%" height={height} aria-hidden="true">
+    <svg className="strip-series" data-testid={testId} viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none" aria-hidden="true">
       {values.map((value, index) => {
-        const magnitude = (Math.abs(value) / max) * (signed ? mid - 1 : height - 2);
+        const magnitude = (Math.abs(value) / max) * (signed ? mid - 2 : height - 4);
         const x = index * (barWidth + gap);
-        const y = signed ? (value >= 0 ? mid - magnitude : mid) : height - 1 - magnitude;
+        const y = signed ? (value >= 0 ? mid - magnitude : mid) : height - 2 - magnitude;
         const color = !signed ? "var(--accent)" : value > 0 ? "var(--up)" : value < 0 ? "var(--down)" : "var(--text-faint)";
-        return <rect key={index} x={x} y={y} width={Math.max(barWidth, 0.5)} height={Math.max(magnitude, value === 0 ? 1 : 0.5)} fill={color} />;
+        return <rect key={index} x={x} y={y} width={Math.max(barWidth, 0.8)} height={Math.max(magnitude, value === 0 ? 1 : 0.6)} fill={color} />;
       })}
     </svg>
   );
@@ -82,7 +87,6 @@ function toneOf(change: number | null): "up" | "down" | "flat" {
 }
 
 export function MarketStrip() {
-  const [sessions, setSessions] = useState<7 | 30>(7);
   const [summary, setSummary] = useState<MarketSummary | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -90,7 +94,7 @@ export function MarketStrip() {
     const ctrl = new AbortController();
     let active = true;
     api
-      .marketSummary(sessions, { signal: ctrl.signal })
+      .marketSummary({ signal: ctrl.signal })
       .then((body) => {
         if (!active) return;
         setSummary(body);
@@ -105,7 +109,7 @@ export function MarketStrip() {
       active = false;
       ctrl.abort();
     };
-  }, [sessions]);
+  }, []);
 
   const change = summary?.index.change ?? null;
   const tone = toneOf(change);
@@ -152,15 +156,6 @@ export function MarketStrip() {
       <div className="strip-cell strip-cell-empty" data-testid="strip-slot" aria-hidden="true" />
       <div className="strip-side">
         <span className="strip-asof">{summary?.as_of ? `session ${summary.as_of}` : "session —"}</span>
-        <Segmented
-          label="Sessions"
-          value={String(sessions)}
-          options={[
-            { value: "7", label: "7 sessions" },
-            { value: "30", label: "30 sessions" },
-          ]}
-          onChange={(value) => setSessions(value === "30" ? 30 : 7)}
-        />
       </div>
     </div>
   );

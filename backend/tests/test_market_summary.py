@@ -34,7 +34,7 @@ def _index_days(count: int, start: date = date(2024, 1, 1)) -> list[date]:
     return [start + timedelta(days=i) for i in range(count)]
 
 
-def test_sessions_7_and_30_follow_vnindex_dates(client, db):
+def test_summary_is_thirty_vnindex_sessions(client, db):
     days = _index_days(40)
     db.add(_symbol("VNINDEX", typ="index"))
     for i, day in enumerate(days):
@@ -44,43 +44,36 @@ def test_sessions_7_and_30_follow_vnindex_dates(client, db):
     db.add(_bar("VNINDEX", days[-1] + timedelta(days=1), 999_999, source="quote"))
     db.commit()
 
-    seven = client.get("/api/market/summary", params={"sessions": 7})
-    thirty = client.get("/api/market/summary", params={"sessions": 30})
-    assert seven.status_code == 200
-    assert thirty.status_code == 200
-    short = seven.json()
-    long = thirty.json()
-    assert short["sessions"] == 7
-    assert long["sessions"] == 30
-    assert len(short["days"]) == 7
-    assert len(short["index"]["closes"]) == 7
-    assert len(long["days"]) == 30
-    assert len(long["index"]["closes"]) == 30
-    assert short["as_of"] == days[-1].isoformat()
-    assert long["as_of"] == days[-1].isoformat()
-    assert short["days"][0]["date"] == days[-7].isoformat()
-    assert short["days"][-1]["date"] == days[-1].isoformat()
-    assert long["days"][0]["date"] == days[-30].isoformat()
-    assert all(day["value"] == 0 for day in short["days"])
-    omitted = client.get("/api/market/summary")
-    assert omitted.status_code == 200
-    assert omitted.json()["sessions"] == 7
+    resp = client.get("/api/market/summary")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sessions"] == 30
+    assert len(body["days"]) == 30
+    assert len(body["index"]["closes"]) == 30
+    assert body["as_of"] == days[-1].isoformat()
+    assert body["days"][0]["date"] == days[-30].isoformat()
+    assert body["days"][-1]["date"] == days[-1].isoformat()
+    assert all(day["value"] == 0 for day in body["days"])
+    ignored = client.get("/api/market/summary", params={"sessions": 7})
+    assert ignored.status_code == 200
+    assert ignored.json()["sessions"] == 30
+    assert len(ignored.json()["days"]) == 30
 
 
 def test_index_change_uses_point_scale(client, db):
-    days = _index_days(8)
+    days = _index_days(31)
     db.add(_symbol("VNINDEX", typ="index"))
-    stored = [100_000, 100_100, 100_200, 100_300, 100_400, 100_500, 101_000, 102_550]
+    stored = [100_000 + i * 100 for i in range(30)] + [102_550]
     for day, close in zip(days, stored):
         db.add(_bar("VNINDEX", day, close))
     db.commit()
 
-    body = client.get("/api/market/summary", params={"sessions": 7}).json()
-    window = stored[-7:]
+    body = client.get("/api/market/summary").json()
+    window = stored[-30:]
     assert body["index"]["closes"] == [close / 100 for close in window]
     assert body["index"]["close"] == 1025.50
-    assert body["index"]["change"] == round((102_550 - 100_100) / 100, 2)
-    assert body["index"]["change_pct"] == round((102_550 - 100_100) / 100_100 * 100, 2)
+    assert body["index"]["change"] == round((102_550 - window[0]) / 100, 2)
+    assert body["index"]["change_pct"] == round((102_550 - window[0]) / window[0] * 100, 2)
     assert body["index"]["close"] != 102_550
 
 
@@ -129,7 +122,7 @@ def test_breadth_counts_missing_bar_and_flat_close(client, db):
     db.add(_bar("MMM", latest, 1, value=999_999, source="quote"))
     db.commit()
 
-    day = client.get("/api/market/summary", params={"sessions": 7}).json()["days"][-1]
+    day = client.get("/api/market/summary").json()["days"][-1]
     assert day["date"] == latest.isoformat()
     assert day["up"] == 2
     assert day["down"] == 1
@@ -150,22 +143,16 @@ def test_value_sum_and_all_zero_window(client, db):
     db.add(_bar("BBB", days[-1], 9, value=6_000))
     db.commit()
 
-    body = client.get("/api/market/summary", params={"sessions": 7}).json()
+    body = client.get("/api/market/summary").json()
     assert [day["value"] for day in body["days"]] == [0, 1_500, 10_000]
     assert len(body["days"]) == 3
 
     for row in db.scalars(select(DailyBar)):
         row.value = 0
     db.commit()
-    empty = client.get("/api/market/summary", params={"sessions": 7}).json()
+    empty = client.get("/api/market/summary").json()
     assert len(empty["days"]) == 3
     assert [day["value"] for day in empty["days"]] == [0, 0, 0]
-
-
-def test_invalid_sessions_rejected(client):
-    for sessions in ("1", "14", "31", "0", "8", "foo"):
-        resp = client.get("/api/market/summary", params={"sessions": sessions})
-        assert resp.status_code == 400
 
 
 def test_summary_query_stays_on_the_session_dates(client, db, engine):
@@ -189,7 +176,7 @@ def test_summary_query_stays_on_the_session_dates(client, db, engine):
 
     event.listen(engine, "before_cursor_execute", before)
     try:
-        resp = client.get("/api/market/summary", params={"sessions": 7})
+        resp = client.get("/api/market/summary")
     finally:
         event.remove(engine, "before_cursor_execute", before)
 

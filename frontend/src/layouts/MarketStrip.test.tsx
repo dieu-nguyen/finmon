@@ -10,7 +10,7 @@ function json(body: unknown) {
 }
 
 const summary: MarketSummary = {
-  sessions: 7,
+  sessions: 30,
   as_of: "2026-10-23",
   index: { close: 1774.15, change: 15.52, change_pct: 0.88, closes: [1758.63, 1774.15] },
   days: [
@@ -63,7 +63,9 @@ describe("market strip", () => {
     expect(screen.getByText(formatTurnover(18_500_000_000_000))).toBeInTheDocument();
     expect(screen.getByText(/above average/)).toBeInTheDocument();
     expect(screen.getByText("session 2026-10-23")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "7 sessions" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "7 sessions" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "30 sessions" })).not.toBeInTheDocument();
+    expect(String(vi.mocked(fetch).mock.calls.find((call) => String(call[0]).includes("/api/market/summary"))?.[0])).toBe("/api/market/summary");
     const slot = screen.getByTestId("strip-slot");
     expect(slot).toBeEmptyDOMElement();
     expect(document.body.textContent).not.toMatch(/foreign|coming soon/i);
@@ -98,41 +100,27 @@ describe("market strip", () => {
     expect(screen.getByRole("heading", { name: "Market" })).toBeInTheDocument();
   });
 
-  it("keeps the page when the summary fails and cancels the previous window", async () => {
+  it("keeps the page when the summary fails and aborts on unmount", async () => {
     const signals: AbortSignal[] = [];
-    let summaryCalls = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo, init?: RequestInit) => {
         const url = String(input);
         if (url.includes("/api/health")) return json({ status: "ok", as_of: null, watermarks: [] });
         if (!url.includes("/api/market/summary")) return json({});
-        summaryCalls += 1;
-        if (summaryCalls === 1) return Promise.reject(Object.assign(new Error("down"), { name: "TypeError" }));
         const signal = init?.signal;
         if (signal) signals.push(signal);
-        return new Promise((_resolve, reject) => {
-          const fail = () => reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
-          if (signal?.aborted) {
-            fail();
-            return;
-          }
-          signal?.addEventListener("abort", fail, { once: true });
-        });
+        return Promise.reject(Object.assign(new Error("down"), { name: "TypeError" }));
       }),
     );
-    renderShell("/patterns");
+    const view = renderShell("/patterns");
     expect(screen.getByRole("heading", { name: "Patterns" })).toBeInTheDocument();
     expect(await screen.findByText("Summary unavailable")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Patterns" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "30 sessions" }));
-    await waitFor(() => expect(signals.length).toBe(1));
-    expect(signals[0].aborted).toBe(false);
-    expect(String(vi.mocked(fetch).mock.calls.find((call) => String(call[0]).includes("sessions=30")))).toContain("sessions=30");
-    fireEvent.click(screen.getByRole("button", { name: "7 sessions" }));
-    await waitFor(() => expect(signals.length).toBe(2));
+    expect(screen.queryByRole("button", { name: "30 sessions" })).not.toBeInTheDocument();
+    view.unmount();
+    await waitFor(() => expect(signals.length).toBeGreaterThan(0));
     expect(signals[0].aborted).toBe(true);
-    expect(screen.getByRole("heading", { name: "Patterns" })).toBeInTheDocument();
   });
 
   it("shows the strip on a symbol route", async () => {
