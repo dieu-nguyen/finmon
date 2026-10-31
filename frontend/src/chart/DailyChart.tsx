@@ -19,6 +19,7 @@ type DrawState = {
   tool: DrawingTool;
   drawings: Drawing[];
   bars: Bar[];
+  axisDates: string[];
   onDrawings: (d: Drawing[]) => void;
   onHover: (index: number | null) => void;
 };
@@ -31,7 +32,7 @@ function bindDrawingClicks(chart: ECharts, stateRef: { current: DrawState }) {
   chart.getZr().on("click", (event) => {
     const { offsetX, offsetY } = event as { offsetX?: number; offsetY?: number };
     if (offsetX == null || offsetY == null) return;
-    const { tool, drawings, bars, onDrawings } = stateRef.current;
+    const { tool, drawings, axisDates, onDrawings } = stateRef.current;
     if (tool === "pan") return;
     const pixel: [number, number] = [offsetX, offsetY];
     if (!chart.containPixel({ gridIndex: 0 }, pixel)) return;
@@ -41,7 +42,12 @@ function bindDrawingClicks(chart: ECharts, stateRef: { current: DrawState }) {
     } catch {
       raw = null;
     }
-    const next = drawingsAfterClick(drawings, tool, bars, raw);
+    const next = drawingsAfterClick(
+      drawings,
+      tool,
+      axisDates.map((date) => ({ date })),
+      raw,
+    );
     if (next !== null) onDrawings(next);
   });
   const onMove = (event: { offsetX?: number; offsetY?: number }) => {
@@ -116,8 +122,8 @@ export function DailyChart({
   }, [bars, drawings, patternMark, indicatorIds, indicatorData, refPrice, ceiling, floor, tool]);
 
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const stateRef = useRef<DrawState>({ tool, drawings, bars, onDrawings, onHover: setHoverIndex });
-  stateRef.current = { tool, drawings, bars, onDrawings, onHover: setHoverIndex };
+  const stateRef = useRef<DrawState>({ tool, drawings, bars, axisDates: view.axisDates, onDrawings, onHover: setHoverIndex });
+  stateRef.current = { tool, drawings, bars, axisDates: view.axisDates, onDrawings, onHover: setHoverIndex };
   useEffect(() => {
     setHoverIndex(null);
   }, [bars]);

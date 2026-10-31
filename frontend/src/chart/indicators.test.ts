@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Bar } from "../api";
-import { buildDailyOption } from "./dailyOption";
+import { buildDailyOption, FUTURE_SCROLL_BARS } from "./dailyOption";
 import type { PatternMark } from "./patternMarks";
 import { filterIndicators, INDICATORS, indicatorQuery, toggleIndicator } from "./indicators";
 
@@ -296,8 +296,10 @@ describe("indicator drawing", () => {
     });
     const candle = seriesOf(view).find((item) => item.type === "candlestick");
     const dates = (view.option.xAxis[0] as { data: string[] }).data;
-    expect(dates).toHaveLength(channelBars.length + 10);
-    expect(dates.at(-1)).toBe("2026-10-21");
+    expect(dates).toHaveLength(channelBars.length + FUTURE_SCROLL_BARS);
+    expect(dates).toContain("2026-10-21");
+    const visibleEnd = view.option.dataZoom[0].endValue;
+    expect(dates.indexOf("2026-10-21")).toBeLessThanOrEqual(dates.indexOf(String(visibleEnd)));
     expect(candle?.markPoint?.data).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ coord: ["2026-10-05", 10], value: "high" }),
@@ -329,7 +331,9 @@ describe("indicator drawing", () => {
       indicatorData: null,
       colors,
     });
-    expect((descending.option.xAxis[0] as { data: string[] }).data.at(-1)).toBe("2026-10-21");
+    const descendingDates = (descending.option.xAxis[0] as { data: string[] }).data;
+    expect(descendingDates).toContain("2026-10-21");
+    expect(descendingDates.at(-1)).not.toBe("2026-10-21");
     const descendingCandle = seriesOf(descending).find((item) => item.type === "candlestick");
     expect(descendingCandle?.markLine?.data).toEqual(
       expect.arrayContaining([
@@ -352,7 +356,9 @@ describe("indicator drawing", () => {
       indicatorData: null,
       colors,
     });
-    expect((flag.option.xAxis[0] as { data: string[] }).data).toEqual(channelBars.map((bar) => bar.date));
+    const flagDates = (flag.option.xAxis[0] as { data: string[] }).data;
+    expect(flagDates.slice(0, channelBars.length)).toEqual(channelBars.map((bar) => bar.date));
+    expect(flagDates).toHaveLength(channelBars.length + FUTURE_SCROLL_BARS);
     expect(flag.option.yAxis[0]?.min).toBeUndefined();
     expect(flag.option.yAxis[0]?.max).toBeUndefined();
     const flagCandle = seriesOf(flag).find((item) => item.type === "candlestick");
