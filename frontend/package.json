@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "qc": "bash ../qc.sh",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "echarts": "^5.6.0",
@@ -17,6 +19,7 @@
     "react-router-dom": "^7.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.0.10",
