@@ -115,7 +115,7 @@ Detail: `docs/pattern-compare.md`.
 
 One paper account. Starting cash is 1,000,000,000 đồng. A buy or sell fills immediately at last stored price: quote last when present, otherwise the newest daily close. Stocks and ETFs only. No short. No fee.
 
-The screen is **Trade**, after Market. First paint is cash, equity, unrealized, realized, and total P&L. The command is ticker, Buy or Sell, whole-share quantity, Fill. Typing a ticker looks up that one last. Positions and the latest 20 fills follow. Reset restores starting cash.
+The screen is **Trade**, after Market. First paint is cash, equity, unrealized, realized, and total P&L. The command is ticker, Buy or Sell, whole-share quantity, Fill. Typing a ticker looks up that one last. Positions follow. Fills are the latest 20, with Range (All, Today, 7d, 30d), Symbol, and Win/Lose. The catalog is not loaded. Reset restores starting cash.
 
 Unrealized is mark-to-market on remaining cost. Realized is booked on a sell. Total P&L is equity minus starting cash.
 
@@ -300,7 +300,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 - Pattern window (look-alike): 90 trading-day closes, Pearson on min-max, floor 0.85, top 20, reference excluded
 - Named patterns: manual. 90 sessions of lookback for the current pattern, except cup and handle at 180 sessions with the cup spanning at least 90. Freshness is the last 10 trading sessions, on the market scan and the one-ticker check. A swing is five bars on the left and up to five on the right. The pair and the head use a 3% band. The score runs from 0 to 1 with a floor of 0.70. The market scan keeps at most 20 hits per selected pattern. The one-ticker check keeps at most one hit per selected pattern. Both triggered runs are stored. Scans and the symbol Scan tab read one combined list: the latest covering run per symbol and pattern, and a stored hit hidden when it is more than 10 sessions behind that symbol's newest bar. The one-ticker check is the Scan tab, and the selected match is drawn on the chart. Look-alike is manual too, and stays on its own latest ok run: Scan on the Scans page, not after backfill.
 - Alerts: Telegram on last-price rules. Pattern Telegram is a separate message from the scan job.
-- Paper trade: one account, starting cash 1,000,000,000 đồng, fill at quote last or newest close, stocks and ETFs, no short, no fee, latest 20 fills. Trade is the screen. Reset restores starting cash.
+- Paper trade: one account, starting cash 1,000,000,000 đồng, fill at quote last or newest close, stocks and ETFs, no short, no fee, latest 20 fills. Fills filter by ICT range, one symbol, and win or lose. Trade is the screen. Reset restores starting cash.
 - Single user, no public market data API
 - Language of UI: English labels OK; tickers and company names as returned (Vietnamese)
 

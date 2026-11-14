@@ -244,7 +244,7 @@ export const api = {
       method: id ? "PUT" : "POST",
       body: JSON.stringify(body),
     }),
-  paper: () => req<PaperAccount>("/api/paper"),
+  paper: (q = "", init?: RequestInit) => req<PaperAccount>(`/api/paper${q}`, init),
   paperOrder: (body: { side: "buy" | "sell"; ticker: string; quantity: number }) =>
     req<PaperAccount>("/api/paper/orders", { method: "POST", body: JSON.stringify(body) }),
   paperReset: () => req<PaperAccount>("/api/paper/reset", { method: "POST" }),

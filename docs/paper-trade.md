@@ -43,7 +43,7 @@ First paint: cash, equity, unrealized, realized, total P&L. Empty positions show
 
 The command row: Buy or Sell, ticker, quantity, last (when that ticker resolves), Fill. Ticker is uppercase. Quantity is a whole share count ≥ 1. Typing a ticker looks up `/api/symbols/{ticker}` after about 200 ms and cancels the previous lookup. That preview does not fill. Fill posts the command and uses the book the API returns.
 
-Open lots: ticker (opens the symbol chart), name, qty, avg, last, value, P&L. Fills: the latest 20, newest first, time, side, ticker, qty, price, realized. Reset restores the starting book.
+Open lots: ticker (opens the symbol chart), name, qty, avg, last, value, P&L. Fills: the latest 20 matching the fill filters, newest first, time, side, ticker, qty, price, realized. The fill toolbar is Range (All, Today, 7d, 30d in ICT), Symbol (one ticker, not the catalog), and Result (All, Win, Lose). Win is realized P&L above zero; Lose is below zero. Buys stay out of Win and Lose. Reset restores the starting book.
 
 ---
 
@@ -69,7 +69,7 @@ Single user. No public market-data write.
 
 | Method | Path | |
 | --- | --- | --- |
-| GET | `/api/paper` | Book: cash, equity, P&L, positions, latest 20 fills. Creates the account at starting cash if missing. |
+| GET | `/api/paper` | Book: cash, equity, P&L, positions, latest 20 fills. `ticker`, `from`, `to` (ICT dates), and `result=all\|win\|lose` narrow fills only. Creates the account at starting cash if missing. |
 | POST | `/api/paper/orders` | `{ side: buy\|sell, ticker, quantity }`. Fills at last and returns the book. |
 | POST | `/api/paper/reset` | Starting cash, no lots, no fills. Returns the book. |
 
@@ -87,7 +87,8 @@ Prices and cash are integer đồng.
 - Sell all clears the lot. Round trip at the same price is P&L 0.
 - Insufficient cash, insufficient shares, unknown ticker, no last, and index are rejected and leave the book unchanged.
 - Reset restores starting cash.
-- UI: empty book, a filled buy shows the lot and profit, a 400 shows the API detail, Reset returns to the empty book.
+- Fills: `ticker` keeps that symbol; `result=win` keeps positive realized; `result=lose` keeps negative realized; `from`/`to` are inclusive ICT days.
+- UI: empty book, a filled buy shows the lot and profit, a 400 shows the API detail, Reset returns to the empty book. Range, Symbol, and Win/Lose narrow the fill request and cancel the previous one.
 
 ---
 

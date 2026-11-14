@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { addCivilDays, ictYmd } from "../time";
 import { Trade } from "./Trade";
 
 function json(body: unknown, ok = true, status = 200) {
@@ -119,5 +120,26 @@ describe("Trade", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     expect(await screen.findByText("No positions. Fill a buy at last price.")).toBeInTheDocument();
     expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith("/api/paper/reset") && call[1]?.method === "POST")).toBe(true);
+  });
+
+  it("narrows fills by range, symbol, and win or lose", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo) => {
+        urls.push(String(input));
+        return json({ ...empty, fills: long.fills });
+      }),
+    );
+    renderTrade();
+    await screen.findByText("Fills");
+    fireEvent.click(screen.getByRole("button", { name: "Win" }));
+    await waitFor(() => expect(urls.some((url) => url.includes("result=win"))).toBe(true));
+    fireEvent.change(screen.getByLabelText("Symbol"), { target: { value: "vhm" } });
+    await waitFor(() => expect(urls.some((url) => url.includes("ticker=VHM"))).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "7d" }));
+    const from = addCivilDays(ictYmd(), -6);
+    const to = ictYmd();
+    await waitFor(() => expect(urls.some((url) => url.includes(`from=${from}`) && url.includes(`to=${to}`))).toBe(true));
   });
 });

@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select
@@ -6,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.models import DailyBar, PaperAccount, PaperFill, PaperPosition, QuoteSnapshot, Symbol
 from app.schemas import PaperAccountOut, PaperFillOut, PaperOrderIn, PaperPositionOut
+
+ICT = ZoneInfo("Asia/Ho_Chi_Minh")
 
 STARTING_CASH = 1_000_000_000
 ACCOUNT_ID = 1
@@ -22,6 +25,30 @@ def _account(db: Session) -> PaperAccount:
     return row
 
 
+def _ict_start(day: date) -> datetime:
+    return datetime.combine(day, time.min, tzinfo=ICT).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _fill_filters(ticker: str | None, from_: date | None, to: date | None, result: str):
+    if from_ is not None and to is not None and from_ > to:
+        raise HTTPException(400, "invalid range")
+    clauses = []
+    code = (ticker or "").strip().upper()
+    if code:
+        clauses.append(PaperFill.ticker == code)
+    if from_ is not None:
+        clauses.append(PaperFill.created_at >= _ict_start(from_))
+    if to is not None:
+        clauses.append(PaperFill.created_at < _ict_start(to + timedelta(days=1)))
+    if result == "win":
+        clauses.append(PaperFill.realized_pnl > 0)
+    elif result == "lose":
+        clauses.append(PaperFill.realized_pnl < 0)
+    elif result != "all":
+        raise HTTPException(400, "invalid result")
+    return clauses
+
+
 def last_price(db: Session, ticker: str) -> int | None:
     snap = db.get(QuoteSnapshot, ticker)
     if snap is not None:
@@ -30,10 +57,20 @@ def last_price(db: Session, ticker: str) -> int | None:
     return bar.close if bar is not None else None
 
 
-def snapshot(db: Session) -> PaperAccountOut:
+def snapshot(
+    db: Session,
+    ticker: str | None = None,
+    from_: date | None = None,
+    to: date | None = None,
+    result: str = "all",
+) -> PaperAccountOut:
     account = _account(db)
     positions = list(db.scalars(select(PaperPosition).order_by(PaperPosition.ticker)).all())
-    fills = list(db.scalars(select(PaperFill).order_by(PaperFill.id.desc()).limit(FILL_LIMIT)).all())
+    fills_q = select(PaperFill)
+    clauses = _fill_filters(ticker, from_, to, result)
+    if clauses:
+        fills_q = fills_q.where(*clauses)
+    fills = list(db.scalars(fills_q.order_by(PaperFill.id.desc()).limit(FILL_LIMIT)).all())
     realized = int(db.scalar(select(func.coalesce(func.sum(PaperFill.realized_pnl), 0))) or 0)
     out_positions: list[PaperPositionOut] = []
     market_value = 0

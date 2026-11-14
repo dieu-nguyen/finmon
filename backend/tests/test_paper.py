@@ -1,6 +1,8 @@
-from datetime import date
+from datetime import date, datetime
 
-from app.models import DailyBar, QuoteSnapshot, Symbol
+from sqlalchemy import select
+
+from app.models import DailyBar, PaperFill, QuoteSnapshot, Symbol
 
 
 def _stock(db, ticker="VCB", close=91000, quote=None, symbol_type="stock"):
@@ -151,3 +153,51 @@ def test_reset_restores_starting_cash(client, db):
     assert body["positions"] == []
     assert body["fills"] == []
     assert body["total_pnl"] == 0
+
+
+def _stamp_last(db, when: datetime) -> None:
+    fill = db.scalars(select(PaperFill).order_by(PaperFill.id.desc())).first()
+    fill.created_at = when
+    db.commit()
+
+
+def _closed_roundtrip(client, db, ticker: str, buy: int, sell: int) -> None:
+    _stock(db, ticker=ticker, close=buy, quote=buy)
+    client.post("/api/paper/orders", json={"side": "buy", "ticker": ticker, "quantity": 100})
+    snap = db.get(QuoteSnapshot, ticker)
+    snap.last = sell
+    db.commit()
+    client.post("/api/paper/orders", json={"side": "sell", "ticker": ticker, "quantity": 100})
+
+
+def test_fills_filter_by_ticker(client, db):
+    _closed_roundtrip(client, db, "VCB", 90000, 110000)
+    _closed_roundtrip(client, db, "VHM", 80000, 70000)
+    body = client.get("/api/paper", params={"ticker": "vcb"}).json()
+    assert [row["ticker"] for row in body["fills"]] == ["VCB", "VCB"]
+    assert body["realized_pnl"] == 100 * 20000 + 100 * -10000
+
+
+def test_fills_filter_win_and_lose(client, db):
+    _closed_roundtrip(client, db, "VCB", 90000, 110000)
+    _closed_roundtrip(client, db, "VHM", 80000, 70000)
+    wins = client.get("/api/paper", params={"result": "win"}).json()["fills"]
+    losses = client.get("/api/paper", params={"result": "lose"}).json()["fills"]
+    assert [(row["ticker"], row["side"], row["realized_pnl"]) for row in wins] == [("VCB", "sell", 2_000_000)]
+    assert [(row["ticker"], row["side"], row["realized_pnl"]) for row in losses] == [("VHM", "sell", -1_000_000)]
+
+
+def test_fills_filter_by_ict_day(client, db):
+    _closed_roundtrip(client, db, "VCB", 90000, 110000)
+    for fill in db.scalars(select(PaperFill)).all():
+        fill.created_at = datetime(2026, 10, 1, 3, 0, 0)
+    db.commit()
+    _closed_roundtrip(client, db, "VHM", 80000, 70000)
+    _stamp_last(db, datetime(2026, 11, 14, 8, 0, 0))
+    sell = db.scalars(select(PaperFill).where(PaperFill.ticker == "VHM", PaperFill.side == "buy")).first()
+    sell.created_at = datetime(2026, 11, 14, 7, 0, 0)
+    db.commit()
+    body = client.get("/api/paper", params={"from": "2026-11-14", "to": "2026-11-14"}).json()
+    assert {row["ticker"] for row in body["fills"]} == {"VHM"}
+    old = client.get("/api/paper", params={"from": "2026-10-01", "to": "2026-10-01"}).json()
+    assert {row["ticker"] for row in old["fills"]} == {"VCB"}

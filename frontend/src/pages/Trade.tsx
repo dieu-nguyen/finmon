@@ -2,6 +2,25 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type PaperAccount, type SymbolRow } from "../api";
 import { Banner, Button, EmptyState, Input, Segmented, Table, formatDong } from "../design-system";
+import { addCivilDays, ictYmd } from "../time";
+
+type FillRange = "all" | "today" | "7d" | "30d";
+type FillResult = "all" | "win" | "lose";
+
+function paperFillQuery(range: FillRange, ticker: string, result: FillResult): string {
+  const params = new URLSearchParams();
+  const code = ticker.trim().toUpperCase();
+  if (code) params.set("ticker", code);
+  if (result !== "all") params.set("result", result);
+  if (range !== "all") {
+    const to = ictYmd();
+    const from = range === "today" ? to : addCivilDays(to, range === "7d" ? -6 : -29);
+    params.set("from", from);
+    params.set("to", to);
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
 
 function formatPnl(n: number): string {
   if (n === 0) return formatDong(0);
@@ -26,19 +45,32 @@ export function Trade() {
   const [quantity, setQuantity] = useState("");
   const [quote, setQuote] = useState<SymbolRow | null>(null);
   const [busy, setBusy] = useState(false);
+  const [range, setRange] = useState<FillRange>("all");
+  const [symbol, setSymbol] = useState("");
+  const [debouncedSymbol, setDebouncedSymbol] = useState("");
+  const [result, setResult] = useState<FillResult>("all");
 
-  const load = () =>
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSymbol(symbol.trim().toUpperCase()), 200);
+    return () => window.clearTimeout(timer);
+  }, [symbol]);
+
+  const fillQuery = paperFillQuery(range, debouncedSymbol, result);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
     api
-      .paper()
+      .paper(fillQuery, { signal: ctrl.signal })
       .then((next) => {
         setBook(next);
         setErr(null);
       })
-      .catch(() => setErr("Failed to load paper book"));
-
-  useEffect(() => {
-    load();
-  }, []);
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setErr("Failed to load paper book");
+      });
+    return () => ctrl.abort();
+  }, [fillQuery]);
 
   useEffect(() => {
     const code = ticker.trim().toUpperCase();
@@ -73,7 +105,7 @@ export function Trade() {
     setBusy(true);
     try {
       const next = await api.paperOrder({ side, ticker: code, quantity: qty });
-      setBook(next);
+      setBook(fillQuery ? await api.paper(fillQuery) : next);
       setErr(null);
       setQuantity("");
     } catch (error) {
@@ -210,37 +242,70 @@ export function Trade() {
           </Table>
         </div>
       ) : null}
-      {book && book.fills.length > 0 ? (
+      {book ? (
         <div className="trade-block">
           <h2 className="trade-heading">Fills</h2>
-          <div className="table-panel">
-            <Table className="heads-up sticky-head">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Side</th>
-                  <th>Ticker</th>
-                  <th className="num">Qty</th>
-                  <th className="num">Price</th>
-                  <th className="num">Realized</th>
-                </tr>
-              </thead>
-              <tbody>
-                {book.fills.map((fill) => (
-                  <tr key={fill.id}>
-                    <td className="ticker-cell">{formatFillTime(fill.created_at)}</td>
-                    <td className={fill.side === "buy" ? "pnl-up" : "pnl-down"}>{fill.side}</td>
-                    <td className="ticker-cell">
-                      <Link to={`/symbol/${fill.ticker}`}>{fill.ticker}</Link>
-                    </td>
-                    <td className="num">{formatDong(fill.quantity)}</td>
-                    <td className="num">{formatDong(fill.price)}</td>
-                    <td className={`num ${pnlClass(fill.realized_pnl)}`}>{formatPnl(fill.realized_pnl)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+          <div className="toolbar">
+            <Segmented
+              label="Range"
+              options={[
+                { value: "all", label: "All" },
+                { value: "today", label: "Today" },
+                { value: "7d", label: "7d" },
+                { value: "30d", label: "30d" },
+              ]}
+              value={range}
+              onChange={(value) => setRange(value === "today" || value === "7d" || value === "30d" ? value : "all")}
+            />
+            <Input
+              placeholder="Symbol"
+              aria-label="Symbol"
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+              style={{ background: "var(--bg)", width: 120, fontFamily: "var(--font-num)", textTransform: "uppercase" }}
+            />
+            <Segmented
+              label="Result"
+              options={[
+                { value: "all", label: "All" },
+                { value: "win", label: "Win" },
+                { value: "lose", label: "Lose" },
+              ]}
+              value={result}
+              onChange={(value) => setResult(value === "win" || value === "lose" ? value : "all")}
+            />
           </div>
+          {book.fills.length === 0 ? <EmptyState text="No fills in this range." /> : null}
+          {book.fills.length > 0 ? (
+            <div className="table-panel">
+              <Table className="heads-up sticky-head">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Side</th>
+                    <th>Ticker</th>
+                    <th className="num">Qty</th>
+                    <th className="num">Price</th>
+                    <th className="num">Realized</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {book.fills.map((row) => (
+                    <tr key={row.id}>
+                      <td className="ticker-cell">{formatFillTime(row.created_at)}</td>
+                      <td className={row.side === "buy" ? "pnl-up" : "pnl-down"}>{row.side}</td>
+                      <td className="ticker-cell">
+                        <Link to={`/symbol/${row.ticker}`}>{row.ticker}</Link>
+                      </td>
+                      <td className="num">{formatDong(row.quantity)}</td>
+                      <td className="num">{formatDong(row.price)}</td>
+                      <td className={`num ${pnlClass(row.realized_pnl)}`}>{formatPnl(row.realized_pnl)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
