@@ -7,6 +7,7 @@ import { Compare } from "./pages/Compare";
 import { Patterns } from "./pages/Patterns";
 import { Scans } from "./pages/Scans";
 import { SymbolPage } from "./pages/Symbol";
+import { Trade } from "./pages/Trade";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/market" replace />} />
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/market" element={<Market />} />
+          <Route path="/trade" element={<Trade />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/patterns" element={<Patterns />} />
           <Route path="/scans" element={<Scans />} />

@@ -172,3 +172,42 @@ class NamedMarketOut(BaseModel):
     hits: list[HitOut] = Field(default_factory=list)
     run_id: int | None = None
     status: str | None = None
+
+
+class PaperOrderIn(BaseModel):
+    side: Literal["buy", "sell"]
+    ticker: str
+    quantity: int = Field(ge=1)
+
+
+class PaperPositionOut(BaseModel):
+    ticker: str
+    name: str
+    quantity: int
+    avg_cost: int
+    last: int
+    market_value: int
+    unrealized_pnl: int
+    change_pct: float | None = None
+
+
+class PaperFillOut(BaseModel):
+    id: int
+    ticker: str
+    side: str
+    quantity: int
+    price: int
+    realized_pnl: int
+    created_at: datetime
+
+
+class PaperAccountOut(BaseModel):
+    starting_cash: int
+    cash: int
+    equity: int
+    market_value: int
+    realized_pnl: int
+    unrealized_pnl: int
+    total_pnl: int
+    positions: list[PaperPositionOut] = Field(default_factory=list)
+    fills: list[PaperFillOut] = Field(default_factory=list)

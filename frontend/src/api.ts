@@ -6,7 +6,14 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    throw new Error(`${res.status}`);
+    let message = `${res.status}`;
+    try {
+      const body = (await res.json()) as { detail?: unknown };
+      if (typeof body?.detail === "string") message = body.detail;
+    } catch {
+      /* keep status */
+    }
+    throw new Error(message);
   }
   return res.json() as Promise<T>;
 }
@@ -144,6 +151,39 @@ export type NamedCheck = {
 
 export type PatternCatalogItem = { id: string; label: string };
 
+export type PaperPosition = {
+  ticker: string;
+  name: string;
+  quantity: number;
+  avg_cost: number;
+  last: number;
+  market_value: number;
+  unrealized_pnl: number;
+  change_pct: number | null;
+};
+
+export type PaperFill = {
+  id: number;
+  ticker: string;
+  side: string;
+  quantity: number;
+  price: number;
+  realized_pnl: number;
+  created_at: string;
+};
+
+export type PaperAccount = {
+  starting_cash: number;
+  cash: number;
+  equity: number;
+  market_value: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  total_pnl: number;
+  positions: PaperPosition[];
+  fills: PaperFill[];
+};
+
 export type NamedScan = {
   as_of: string | null;
   patterns: string[];
@@ -157,7 +197,7 @@ export type NamedScan = {
 export const api = {
   health: () => req<Health>("/api/health"),
   symbols: (q = "", init?: RequestInit) => req<SymbolPage>(`/api/symbols${q}`, init),
-  symbol: (ticker: string) => req<SymbolRow>(`/api/symbols/${encodeURIComponent(ticker)}`),
+  symbol: (ticker: string, init?: RequestInit) => req<SymbolRow>(`/api/symbols/${encodeURIComponent(ticker)}`, init),
   bars: (ticker: string, range?: CandleQuery, init?: RequestInit) => req<Bar[]>(withRange(`/api/symbols/${ticker}/bars`, range), init),
   indicators: (ticker: string, names: string, range?: CandleQuery, init?: RequestInit) => {
     const params = new URLSearchParams({ names });
@@ -204,4 +244,8 @@ export const api = {
       method: id ? "PUT" : "POST",
       body: JSON.stringify(body),
     }),
+  paper: () => req<PaperAccount>("/api/paper"),
+  paperOrder: (body: { side: "buy" | "sell"; ticker: string; quantity: number }) =>
+    req<PaperAccount>("/api/paper/orders", { method: "POST", body: JSON.stringify(body) }),
+  paperReset: () => req<PaperAccount>("/api/paper/reset", { method: "POST" }),
 };

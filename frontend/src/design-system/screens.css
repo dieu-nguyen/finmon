@@ -811,6 +811,48 @@ h1, h2, h3 { margin: 0; }
   background: var(--bg-selected);
 }
 .chip-meta { font-family: var(--font-num); opacity: 0.8; }
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.stat-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  min-width: 0;
+}
+.stat-label {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.stat-value {
+  font-family: var(--font-num);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  margin-top: 4px;
+}
+.pnl-up { color: var(--up); }
+.pnl-down { color: var(--down); }
+.fill-last {
+  color: var(--text-muted);
+  font-family: var(--font-num);
+  font-size: var(--fs-sm);
+  padding-bottom: 8px;
+}
+.trade-block { margin-top: var(--space-4); }
+.trade-heading {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 var(--space-2);
+}
 .form-panel {
   background: var(--bg-elev);
   border: 1px solid var(--border);

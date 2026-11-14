@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.jobs.evaluate_alerts import evaluate_alerts
 from app.jobs.ingest import ingest_watchlist_quotes
-from app.routers import alerts, annotations, bars, company, meta, patterns, symbols, watchlist
+from app.routers import alerts, annotations, bars, company, meta, paper, patterns, symbols, watchlist
 
 
 def _run_quotes() -> None:
@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(company.router)
     app.include_router(patterns.router)
+    app.include_router(paper.router)
     return app
 
 

@@ -1,4 +1,4 @@
-export function NavIcon({ name }: { name: "market" | "alerts" | "patterns" | "scans" }) {
+export function NavIcon({ name }: { name: "market" | "trade" | "alerts" | "patterns" | "scans" }) {
   const common = {
     width: 18,
     height: 18,
@@ -15,6 +15,14 @@ export function NavIcon({ name }: { name: "market" | "alerts" | "patterns" | "sc
       <svg {...common}>
         <path d="M2.5 14.5h13" />
         <path d="M4 14.5V8.5M8 14.5V4.5M12 14.5V7M15.5 14.5V6" />
+      </svg>
+    );
+  }
+  if (name === "trade") {
+    return (
+      <svg {...common}>
+        <path d="M6 12.5V4.5M6 4.5 3.8 6.8M6 4.5 8.2 6.8" />
+        <path d="M12 5.5v8M12 13.5 9.8 11.2M12 13.5 14.2 11.2" />
       </svg>
     );
   }
