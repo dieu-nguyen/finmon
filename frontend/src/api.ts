@@ -39,6 +39,26 @@ export type Bar = {
   volume: number;
 };
 
+export type MarketDay = {
+  date: string;
+  up: number;
+  down: number;
+  flat: number;
+  value: number;
+};
+
+export type MarketSummary = {
+  sessions: number;
+  as_of: string | null;
+  index: {
+    close: number | null;
+    change: number | null;
+    change_pct: number | null;
+    closes: number[];
+  };
+  days: MarketDay[];
+};
+
 export type Health = {
   status: string;
   as_of: string | null;
@@ -156,6 +176,7 @@ export type NamedScan = {
 
 export const api = {
   health: () => req<Health>("/api/health"),
+  marketSummary: (init?: RequestInit) => req<MarketSummary>("/api/market/summary", init),
   symbols: (q = "", init?: RequestInit) => req<SymbolPage>(`/api/symbols${q}`, init),
   symbol: (ticker: string) => req<SymbolRow>(`/api/symbols/${encodeURIComponent(ticker)}`),
   bars: (ticker: string, range?: CandleQuery, init?: RequestInit) => req<Bar[]>(withRange(`/api/symbols/${ticker}/bars`, range), init),

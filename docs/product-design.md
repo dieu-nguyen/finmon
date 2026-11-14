@@ -8,7 +8,7 @@ Audience: one operator (you). Single-user is enough for v1.
 
 - This file is the current product.
 - Build specs: `docs/backfill-workflow.md`, `docs/market-list.md`, `docs/pattern-compare.md`.
-- Decisions: 0001. History backfill is its own process (`docs/adr/0001-backfill-process.md`); 0002. The market screen is one page of one type (`docs/adr/0002-market-list-page.md`); 0003. Indicators are calculated when the chart asks (`docs/adr/0003-indicators-on-read.md`); 0004. HCX names are corporate bonds (`docs/adr/0004-hcx-bonds.md`); 0005. Pattern compare runs after the official bar (`docs/adr/0005-pattern-compare-job.md`; the after-backfill schedule is superseded by 0007); 0006. Named patterns are their own scan kind (`docs/adr/0006-named-pattern-scan.md`); 0007. Both pattern scans are manual (`docs/adr/0007-manual-pattern-scans.md`); 0008. Named scan results are one combined list (`docs/adr/0008-mixed-scan-results.md`); 0009. The named-pattern catalog (`docs/adr/0009-named-pattern-catalog.md`); 0010. Each scan section opens with its summary (`docs/adr/0010-scans-page-layout.md`); 0011. The market page reads the latest two bars by index (`docs/adr/0011-latest-two-bars.md`); 0012. A market scan returns before scoring finishes (`docs/adr/0012-scan-off-request.md`).
+- Decisions: 0001. History backfill is its own process (`docs/adr/0001-backfill-process.md`); 0002. The market screen is one page of one type (`docs/adr/0002-market-list-page.md`); 0003. Indicators are calculated when the chart asks (`docs/adr/0003-indicators-on-read.md`); 0004. HCX names are corporate bonds (`docs/adr/0004-hcx-bonds.md`); 0005. Pattern compare runs after the official bar (`docs/adr/0005-pattern-compare-job.md`; the after-backfill schedule is superseded by 0007); 0006. Named patterns are their own scan kind (`docs/adr/0006-named-pattern-scan.md`); 0007. Both pattern scans are manual (`docs/adr/0007-manual-pattern-scans.md`); 0008. Named scan results are one combined list (`docs/adr/0008-mixed-scan-results.md`); 0009. The named-pattern catalog (`docs/adr/0009-named-pattern-catalog.md`); 0010. Each scan section opens with its summary (`docs/adr/0010-scans-page-layout.md`); 0011. The market page reads the latest two bars by index (`docs/adr/0011-latest-two-bars.md`); 0012. A market scan returns before scoring finishes (`docs/adr/0012-scan-off-request.md`); 0013. A market strip is pinned on every page (`docs/adr/0013-market-strip.md`).
 - `docs/design-system.md` and `docs/market-api-research.md` stay supporting material.
 
 ---
@@ -39,6 +39,8 @@ Out of scope for this product:
 ## 2. What you see (product surfaces)
 
 UX is the first principle for every screen: performance and convenience. First paint is a small set. Search and filters narrow the request. Stocks, fund certificates, and indices stay in separate lists.
+
+A strip is shell chrome, pinned above every page. It shows VN-Index, HOSE breadth, and HOSE trading value for 30 trading sessions taken from VNINDEX. The fourth cell is empty. Detail: `docs/adr/0013-market-strip.md`.
 
 ### 2.1 Market
 

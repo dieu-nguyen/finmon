@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AsOf } from "../design-system";
 import { NavIcon } from "../design-system/icons";
 import { api, type Health } from "../api";
+import { MarketStrip } from "./MarketStrip";
 
 const NAV: { to: string; label: string; icon: "market" | "alerts" | "patterns" | "scans" }[] = [
   { to: "/market", label: "Market", icon: "market" },
@@ -32,6 +33,7 @@ export function AppShell() {
           </span>
         </div>
       </header>
+      <MarketStrip />
       <div className="app-body">
         <nav className="nav">
           <div className="nav-kicker">Terminal</div>
