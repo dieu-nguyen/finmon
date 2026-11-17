@@ -192,3 +192,32 @@ class BarSync(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     last_error: Mapped[str] = mapped_column(String(512), default="")
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PaperAccount(Base):
+    __tablename__ = "paper_account"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cash: Mapped[int] = mapped_column(BigInteger)
+    starting_cash: Mapped[int] = mapped_column(BigInteger)
+
+
+class PaperPosition(Base):
+    __tablename__ = "paper_position"
+
+    ticker: Mapped[str] = mapped_column(String(32), primary_key=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+    cost_basis: Mapped[int] = mapped_column(BigInteger)
+
+
+class PaperFill(Base):
+    __tablename__ = "paper_fill"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(32), index=True)
+    side: Mapped[str] = mapped_column(String(8))
+    quantity: Mapped[int] = mapped_column(Integer)
+    price: Mapped[int] = mapped_column(BigInteger)
+    realized_pnl: Mapped[int] = mapped_column(BigInteger, default=0)
+    cash_after: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

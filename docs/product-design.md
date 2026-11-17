@@ -1,21 +1,21 @@
 # finmon product design
 
-Vietnam equity monitor (HOSE, HNX, UPCOM). Prices from **DNSE OpenAPI**. Company and fundamental data from **Vnstock**. Technical indicators are computed locally from daily OHLCV. Not a broker, not a trading terminal, not realtime Level-2.
+Vietnam equity monitor (HOSE, HNX, UPCOM). Prices from **DNSE OpenAPI**. Company and fundamental data from **Vnstock**. Technical indicators are computed locally from daily OHLCV. A paper book can fill a buy or sell at last stored price. Not a broker, not a live trading terminal, not realtime Level-2.
 
 Audience: one operator (you). Single-user is enough for v1.
 
 ## Where to read
 
 - This file is the current product.
-- Build specs: `docs/backfill-workflow.md`, `docs/market-list.md`, `docs/pattern-compare.md`.
-- Decisions: 0001. History backfill is its own process (`docs/adr/0001-backfill-process.md`); 0002. The market screen is one page of one type (`docs/adr/0002-market-list-page.md`); 0003. Indicators are calculated when the chart asks (`docs/adr/0003-indicators-on-read.md`); 0004. HCX names are corporate bonds (`docs/adr/0004-hcx-bonds.md`); 0005. Pattern compare runs after the official bar (`docs/adr/0005-pattern-compare-job.md`; the after-backfill schedule is superseded by 0007); 0006. Named patterns are their own scan kind (`docs/adr/0006-named-pattern-scan.md`); 0007. Both pattern scans are manual (`docs/adr/0007-manual-pattern-scans.md`); 0008. Named scan results are one combined list (`docs/adr/0008-mixed-scan-results.md`); 0009. The named-pattern catalog (`docs/adr/0009-named-pattern-catalog.md`); 0010. Each scan section opens with its summary (`docs/adr/0010-scans-page-layout.md`); 0011. The market page reads the latest two bars by index (`docs/adr/0011-latest-two-bars.md`); 0012. A market scan returns before scoring finishes (`docs/adr/0012-scan-off-request.md`).
+- Build specs: `docs/backfill-workflow.md`, `docs/market-list.md`, `docs/pattern-compare.md`, `docs/paper-trade.md`.
+- Decisions: 0001. History backfill is its own process (`docs/adr/0001-backfill-process.md`); 0002. The market screen is one page of one type (`docs/adr/0002-market-list-page.md`); 0003. Indicators are calculated when the chart asks (`docs/adr/0003-indicators-on-read.md`); 0004. HCX names are corporate bonds (`docs/adr/0004-hcx-bonds.md`); 0005. Pattern compare runs after the official bar (`docs/adr/0005-pattern-compare-job.md`; the after-backfill schedule is superseded by 0007); 0006. Named patterns are their own scan kind (`docs/adr/0006-named-pattern-scan.md`); 0007. Both pattern scans are manual (`docs/adr/0007-manual-pattern-scans.md`); 0008. Named scan results are one combined list (`docs/adr/0008-mixed-scan-results.md`); 0009. The named-pattern catalog (`docs/adr/0009-named-pattern-catalog.md`); 0010. Each scan section opens with its summary (`docs/adr/0010-scans-page-layout.md`); 0011. The market page reads the latest two bars by index (`docs/adr/0011-latest-two-bars.md`); 0012. A market scan returns before scoring finishes (`docs/adr/0012-scan-off-request.md`); 0013. Mock trades fill at last stored price (`docs/adr/0013-mock-paper-trade.md`).
 - `docs/design-system.md` and `docs/market-api-research.md` stay supporting material.
 
 ---
 
 ## 1. Purpose
 
-See the market, mark your own thinking on it, get told when price hits a level you chose, and when you ask, see which names look like a reference you picked. When you ask, scan selected named patterns on one ticker or across the market.
+See the market, mark your own thinking on it, get told when price hits a level you chose, and when you ask, see which names look like a reference you picked. When you ask, scan selected named patterns on one ticker or across the market. When you put a buy or sell, fill it on a paper book and see the win or lose.
 
 Success looks like:
 
@@ -24,12 +24,13 @@ Success looks like:
 - When last price crosses an alert you set, Telegram gets a message on that 30-minute poll, while the API is up in session.
 - You press Scan on Scans for one saved look-alike pattern. You open a short hit list, not the catalog. Backfill does not start that scan, and the 30-minute poll does not either.
 - You trigger a named-pattern scan. On a ticker the control is the Scan tab, after Company, Note, and Alert. On Scans you pick patterns and either all eligible tickers or a subset. Both runs are stored. Opening either screen shows one combined named-result list and does not scan again. A selected match is drawn on that ticker's chart. Lookback is 90 sessions, except cup and handle at 180. The last swing or the confirming close is inside the last 10 trading sessions. A hit opens that ticker's chart.
+- You fill a buy or sell on Trade at last stored price. Cash, the lot, and P&L update. This is not an order at DNSE.
 
-The first three bullets are **v1**. Look-alike is **v1.1**. Named patterns are the next scan kind. They are built.
+The first three bullets are **v1**. Look-alike is **v1.1**. Named patterns are the next scan kind. They are built. Paper trade is built.
 
 Out of scope for this product:
 
-- Order placement, portfolio brokerage sync, DNSE WebSocket live board.
+- Order placement at a broker, portfolio brokerage sync, DNSE WebSocket live board.
 - Selling or republishing exchange data.
 - Auto-trading from patterns.
 - Intraday indicator engine (daily bars only).
@@ -110,6 +111,16 @@ Rules, shapes, and a weekly schedule are reserved. They are not in this slice.
 
 Detail: `docs/pattern-compare.md`.
 
+### 2.7 Trade (paper)
+
+One paper account. Starting cash is 1,000,000,000 đồng. A buy or sell fills immediately at last stored price: quote last when present, otherwise the newest daily close. Stocks and ETFs only. No short. No fee.
+
+The screen is **Trade**, after Market. First paint is cash, equity, unrealized, realized, and total P&L. The command is ticker, Buy or Sell, whole-share quantity, Fill. Typing a ticker looks up that one last. Positions follow. Fills are the latest 20, with Range (All, Today, 7d, 30d), Symbol, and Win/Lose. The catalog is not loaded. Reset restores starting cash.
+
+Unrealized is mark-to-market on remaining cost. Realized is booked on a sell. Total P&L is equity minus starting cash.
+
+Decision: `docs/adr/0013-mock-paper-trade.md`. Detail: `docs/paper-trade.md`.
+
 ---
 
 ## 3. Pattern types
@@ -179,7 +190,8 @@ Small units, each with one job:
 [annotation store]  drawings / notes
 [alert engine] reads market store + alert rules --> [Telegram]
 [pattern job] when you press Scan --> [scan hits] --> [Telegram]
-[web app] reads all stores; writes annotations, alerts, patterns, watchlist
+[paper book] fill at last stored price --> cash, lots, P&L
+[web app] reads all stores; writes annotations, alerts, patterns, watchlist, paper fills
 ```
 
 - **DNSE client**: auth (API key/secret), REST only, rate-limit headers, paging.
@@ -189,8 +201,9 @@ Small units, each with one job:
 - **Annotation store**: drawings, chart notes, page notes.
 - **Alert engine**: load rules, compare to last price, write delivery log, call Telegram once per fire. The 30-minute poll only.
 - **Pattern job**: no DNSE call. Look-alike and named patterns both run only when you trigger them. Neither runs after backfill and neither runs on the 30-minute poll. Look-alike is still 90 closes, and one Telegram message when that run succeeds. A market run and a one-ticker check both store hits. Named screens read one combined list. The market run sends one Telegram message. The one-ticker check sends none.
+- **Paper book**: one account. A buy or sell fills at last stored price. No DNSE call. Reset restores starting cash.
 - **API scheduler**: 30-minute watchlist poll, weekdays in session (ICT), including 15:00. No 16:30 history job. Skip Saturday and Sunday; skip VN holidays when a holiday list exists.
-- **Web app**: market list, chart and drawings (Apache ECharts), notes, price alerts, Scans.
+- **Web app**: market list, chart and drawings (Apache ECharts), notes, price alerts, Scans, Trade.
 - **Store**: MySQL 8.
 
 Compute chart indicators in the app (or a pure function module), not in SQL, and not as stored series.
@@ -211,6 +224,9 @@ Compute chart indicators in the app (or a pure function module), not in SQL, and
 - `pattern_def`: name, kind (`lookalike` built; `named` is the manual scan kind; `rule` and `shape` reserved), spec JSON, schedule (`daily` for look-alike; `weekly` and `both` reserved), enabled. Look-alike stores reference, minimum score, and top K.
 - `scan_run`: id, started_at, finished_at, status. A named run also stores the patterns and the ticker scope that were requested. A new named run stores the tickers it compared.
 - `scan_hit`: run_id, ticker, pattern_id, score, window_start, window_end. A named-pattern hit also stores the swing dates and prices, and forming or confirmed. The market scan and the one-ticker check both write these rows. The screens share one combined list.
+- `paper_account`: id 1, cash, starting_cash. Starting cash is 1,000,000,000 đồng.
+- `paper_position`: ticker, quantity, cost_basis
+- `paper_fill`: id, ticker, side, quantity, price, realized_pnl, cash_after, created_at. The screen shows the latest 20.
 
 Prices stored as integer **đồng** (or decimal with fixed scale). Never mix nghìn.
 
@@ -223,6 +239,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 - Vnstock error: company panel “unavailable”; chart still works.
 - Telegram fail on a price alert: keep the alert unsent, retry next cycle; do not flip `last_fired_at` until send succeeds (for `once` alerts).
 - Pattern job failure: mark that run failed, keep the previous hits visible with their as-of date, and send no hit-list message.
+- Paper fill: unknown ticker 404; no last, not tradeable, insufficient cash, or insufficient shares 400. The book does not change.
 
 ---
 
@@ -234,6 +251,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 - Look-alike: two identical normalized series score about 1. The reference ticker is not in its own hits. A window whose newest bar is `source=quote` is not scored.
 - Named patterns: a fresh double bottom matches; the same shape ending 30 sessions ago does not. A clear head and shoulders matches; a flat three-high does not. Each later pattern has a clear example that matches and a shape that is too old or too flat that does not. Cup and handle uses 180 sessions. The one-ticker check and the market scan agree. Both screens then read one combined list: the latest covering run per symbol and pattern, with a hit more than 10 sessions behind that symbol's newest bar hidden. A named scan does not run unless you trigger it, and both triggered runs are stored. See `docs/pattern-compare.md`.
 - UI: a market page of 50, chart load, save drawing, save page note, create alert (browser or component tests).
+- Paper book: empty account is 1,000,000,000 cash and P&L 0. A buy at last close takes cash and opens a lot. Quote last wins over close. A later last moves unrealized. A sell books realized. Insufficient cash or shares is rejected. Reset restores starting cash. See `docs/paper-trade.md`.
 
 ---
 
@@ -254,6 +272,10 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 **Named patterns**
 
 7. Manual scans on the same hit tables. Kind `named`. The catalog in `docs/pattern-compare.md`, chosen from a multi-select. Market ticker scope is all eligible names or a subset. Lookback is 90 sessions, except cup and handle at 180. Freshness is the last 10 trading sessions, on the market scan and from a ticker. Swing width is five bars. Pair tolerance and head prominence are 3%. Floor 0.70. At most 20 market-scan hits per pattern, and at most one hit per pattern on a ticker. Both triggered runs are stored. Scans and the symbol Scan tab read one combined list, the latest result for each symbol and pattern. The list shows forming or confirmed, and the run id. The chart draws the swings and the boundary on that ticker.
+
+**Paper trade**
+
+8. Trade page, one paper account, fill at last stored price, mark-to-market P&L. Decision: `docs/adr/0013-mock-paper-trade.md`.
 
 **Reserved**
 
@@ -278,6 +300,7 @@ Prices stored as integer **đồng** (or decimal with fixed scale). Never mix ng
 - Pattern window (look-alike): 90 trading-day closes, Pearson on min-max, floor 0.85, top 20, reference excluded
 - Named patterns: manual. 90 sessions of lookback for the current pattern, except cup and handle at 180 sessions with the cup spanning at least 90. Freshness is the last 10 trading sessions, on the market scan and the one-ticker check. A swing is five bars on the left and up to five on the right. The pair and the head use a 3% band. The score runs from 0 to 1 with a floor of 0.70. The market scan keeps at most 20 hits per selected pattern. The one-ticker check keeps at most one hit per selected pattern. Both triggered runs are stored. Scans and the symbol Scan tab read one combined list: the latest covering run per symbol and pattern, and a stored hit hidden when it is more than 10 sessions behind that symbol's newest bar. The one-ticker check is the Scan tab, and the selected match is drawn on the chart. Look-alike is manual too, and stays on its own latest ok run: Scan on the Scans page, not after backfill.
 - Alerts: Telegram on last-price rules. Pattern Telegram is a separate message from the scan job.
+- Paper trade: one account, starting cash 1,000,000,000 đồng, fill at quote last or newest close, stocks and ETFs, no short, no fee, latest 20 fills. Fills filter by ICT range, one symbol, and win or lose. Trade is the screen. Reset restores starting cash.
 - Single user, no public market data API
 - Language of UI: English labels OK; tickers and company names as returned (Vietnamese)
 

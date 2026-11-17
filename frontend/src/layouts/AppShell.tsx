@@ -4,8 +4,9 @@ import { AsOf } from "../design-system";
 import { NavIcon } from "../design-system/icons";
 import { api, type Health } from "../api";
 
-const NAV: { to: string; label: string; icon: "market" | "alerts" | "patterns" | "scans" }[] = [
+const NAV: { to: string; label: string; icon: "market" | "trade" | "alerts" | "patterns" | "scans" }[] = [
   { to: "/market", label: "Market", icon: "market" },
+  { to: "/trade", label: "Trade", icon: "trade" },
   { to: "/alerts", label: "Alerts", icon: "alerts" },
   { to: "/patterns", label: "Patterns", icon: "patterns" },
   { to: "/scans", label: "Scans", icon: "scans" },

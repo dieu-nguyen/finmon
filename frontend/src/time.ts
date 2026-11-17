@@ -1,3 +1,17 @@
+export function ictYmd(at = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at);
+}
+
+export function addCivilDays(ymd: string, days: number): string {
+  const [year, month, day] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
 /** Named-scan times are stored as UTC without an offset. */
 export function formatScannedAt(value: string | null | undefined): string {
   if (!value) return "";
